@@ -4,38 +4,30 @@ Aplicación web para la operación de mostrador de Inmensa Mar.
 
 ## Estado
 
-Versión inicial de desarrollo. Incluye catálogo de ejemplo, carrito, ventas simuladas en efectivo, consulta de existencias y resumen local. Los datos se guardan en el navegador (`localStorage`) y no se comparten entre dispositivos.
-
-El módulo de pedidos, la autenticación, las reservas y la conexión con Supabase aún no están implementados. El archivo SQL es un borrador de diseño y no debe ejecutarse en producción.
+La aplicación incluye autenticación de personal con Supabase y un mostrador demostrativo. Las ventas, existencias y reportes del mostrador siguen siendo locales; **no se registran en PostgreSQL**. No utilizar para operaciones reales.
 
 ## Requisitos
 
-- Node.js 22 o posterior
+- Node.js 20 o superior
 - npm
+- Proyecto Supabase con la migración Core V2 aplicada
+- Usuario creado en Supabase Authentication y perfil activo en `public.staff_profiles`
 
-## Ejecutar
+## Desarrollo
 
-```bash
-npm install
-npm run dev
-```
+1. Copiar `.env.example` a `.env.local`.
+2. Completar `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`.
+3. Ejecutar `npm install` y `npm run dev`.
+4. Ejecutar `npm run build` antes de publicar.
 
-Para verificar tipos y generar una compilación:
+## Despliegue en Cloudflare Pages
 
-```bash
-npm run build
-```
+- Comando de compilación: `npm run build`
+- Directorio de salida: `dist`
+- Variables de entorno: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
 
-## Configuración
+Utilizar únicamente la clave **publishable** de Supabase en el frontend. No incluir contraseñas de base de datos, tokens personales ni claves `service_role`/secretas en el repositorio o en variables `VITE_`.
 
-`.env.example` documenta las variables previstas para una futura conexión con Supabase. La versión actual no las utiliza. Nunca guardar credenciales privadas en el repositorio ni usar claves de servidor en variables `VITE_`.
+## Seguridad
 
-## Estructura
-
-- `src/main.tsx`: interfaz y lógica local de la versión inicial.
-- `src/styles.css`: estilos responsive.
-- `supabase/migrations/`: borradores de esquema; no aplicables a producción.
-
-## Antes de usar en el negocio
-
-Se requieren autenticación, políticas de acceso, operaciones transaccionales, respaldo y recuperación de datos, y pruebas funcionales y de seguridad.
+El inicio de sesión comprueba el perfil activo del personal. Las políticas RLS y las funciones de base de datos son la barrera de autorización para operaciones reales; ocultar pantallas en React no sustituye permisos del servidor. La integración de ventas e inventario está pendiente.
