@@ -231,9 +231,30 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    <div className="delivery-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delivery-confirm-title">
     <h3 id="delivery-confirm-title">{confirm.kind==='delivery'?(orderStates[confirm.id]==='delivered'?'¿Registrar cobro pendiente?':'¿Entregar y registrar cobro?'):'¿Confirmar salida?'}</h3>
     <p>{confirm.kind==='delivery'?'Elegí cómo pagó el cliente. Las transferencias quedan reportadas hasta su verificación.':'Confirmá que los productos salieron del local. Esta acción descuenta el inventario reservado.'}</p>
+    {confirm.kind==='delivery'&&(()=>{
+      const order=mine.find(o=>o.order_id===confirm.id)||orders.find(o=>o.id===confirm.id);
+      const total=order?.total_cents??0;
+      const cashNumber=Number(tendered);
+      const validCash=tendered.trim()!==''&&Number.isFinite(cashNumber)&&Number.isSafeInteger(Math.round(cashNumber*100))&&Math.round(cashNumber*100)>=total;
+      const isLate=orderStates[confirm.id]==='delivered';
+      return <div className="delivery-payment-fields">
+        <div className="delivery-payment-total"><span>Total del pedido</span><strong>{money(total)}</strong></div>
+        <fieldset className="delivery-payment-methods"><legend>¿Cómo pagó el cliente?</legend>
+          <label><input type="radio" name="delivery-payment-method" value="cash" checked={paymentMethod==='cash'} disabled={busy||!!paymentAttempt.current} onChange={()=>setPaymentMethod('cash')}/> Efectivo</label>
+          <label><input type="radio" name="delivery-payment-method" value="transfer_reported" checked={paymentMethod==='transfer_reported'} disabled={busy||!!paymentAttempt.current} onChange={()=>setPaymentMethod('transfer_reported')}/> Transferencia reportada</label>
+          {!isLate&&<label><input type="radio" name="delivery-payment-method" value="pending" checked={paymentMethod==='pending'} disabled={busy||!!paymentAttempt.current} onChange={()=>setPaymentMethod('pending')}/> Pago pendiente</label>}
+        </fieldset>
+        {paymentMethod==='cash'?<div className="delivery-payment-cash">
+          <label htmlFor="delivery-tendered">Efectivo recibido (Q)</label>
+          <input id="delivery-tendered" type="number" inputMode="decimal" min="0" step="0.01" placeholder="Ej. 50.00" value={tendered} disabled={busy||!!paymentAttempt.current} onChange={e=>setTendered(e.target.value)}/>
+          <div className="delivery-payment-change"><span>Cambio a devolver</span><strong>{validCash?money(Math.round(cashNumber*100)-total):'—'}</strong></div>
+          {tendered.trim()!==''&&!validCash&&<small role="alert">Ingresá un monto igual o mayor al total.</small>}
+        </div>:<p className="delivery-payment-note">{paymentMethod==='transfer_reported'?'La transferencia quedará pendiente de verificación bancaria por el administrador.':'El pedido se entregará con saldo pendiente, sin registrar dinero recibido.'}</p>}
+      </div>;
+    })()}
     <div className="delivery-confirm-actions">
      <button type="button" disabled={busy} onClick={()=>{if(!paymentAttempt.current)setConfirm(null);}}>Volver</button>
-     <button type="button" className="delivery-primary" disabled={busy} onClick={()=>{
+     <button type="button" className="delivery-primary" disabled={busy||(confirm.kind==='delivery'&&(paymentMethod==='cash'&&(!tendered.trim()||!Number.isFinite(Number(tendered))||!Number.isSafeInteger(Math.round(Number(tendered)*100))||Math.round(Number(tendered)*100)<(mine.find(o=>o.order_id===confirm.id)?.total_cents??orders.find(o=>o.id===confirm.id)?.total_cents??0))||orderStates[confirm.id]==='delivered'&&paymentMethod==='pending'))} onClick={()=>{
       const action=confirm;
       if(action.kind==='delivery')void delivered(action.id,mine.find(o=>o.order_id===action.id)?.total_cents||orders.find(o=>o.id===action.id)?.total_cents||0);
       else if(action.id==='new')void prepare();
