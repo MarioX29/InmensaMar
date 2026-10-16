@@ -25,3 +25,5 @@
 .remove-line{border:0;background:transparent;color:#8c3d31;text-decoration:underline;padding:6px 3px;font-size:12px;cursor:pointer}
 .remove-line:disabled{opacity:.45}
 .cart-bottom{flex-wrap:wrap}
+
+@media(max-width:740px){.bottom-nav{grid-template-columns:repeat(5,1fr)}}

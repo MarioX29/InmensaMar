@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -84,5 +84,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
     {error && <p className="auth-error" role="alert">{error}</p>}
     <button className="primary" onClick={signOut}>Cerrar sesión</button>
   </section></main>;
-  return <><div className="session-strip"><span>{auth.staff?.display_name} · {auth.staff?.role}</span><button onClick={signOut}>Cerrar sesión</button></div>{children}</>;
+  return <><div className="session-strip"><span>{auth.staff?.display_name} · {auth.staff?.role}</span><button onClick={signOut}>Cerrar sesión</button></div>{isValidElement<{ staffRole?: Staff['role'] }>(children) ? cloneElement(children, {staffRole:auth.staff?.role}) : children}</>;
 }
