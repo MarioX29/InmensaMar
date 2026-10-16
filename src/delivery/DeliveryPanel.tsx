@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './delivery.css';
 type Driver={user_id:string;display_name:string};
@@ -7,6 +7,10 @@ type Order={id:string;customer_name:string;total_cents:number;status?:string};
 type Assignment={order_id:string;route_id:string;stop_order:number};
 type DriverOrder={order_id:string;route_id:string;route_label:string;customer_name:string;customer_phone:string;delivery_address:string;total_cents:number;stop_order:number;order_status:string};
 const money=(n:number)=>`Q ${(n/100).toFixed(2)}`;
+const GUATEMALA_TZ='America/Guatemala';
+const formatLocalDate=(iso:string)=>new Intl.DateTimeFormat('es-GT',{timeZone:GUATEMALA_TZ,day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(iso));
+const formatLocalDateTime=(iso:string)=>new Intl.DateTimeFormat('es-GT',{timeZone:GUATEMALA_TZ,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(iso));
+const localDateKey=(iso:string)=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:GUATEMALA_TZ,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(iso));const part=(type:string)=>parts.find(x=>x.type===type)?.value||'';return `${part('year')}-${part('month')}-${part('day')}`;};
 const errorText=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'No se pudo completar la operación.';
 export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
  const [drivers,setDrivers]=useState<Driver[]>([]);
@@ -148,7 +152,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
      const ids=assignments.filter(a=>a.route_id===r.id).map(a=>a.order_id);
      const states=ids.map(id=>orderStates[id]);
      const state=states.length>0&&states.every(x=>x==='delivered')?'delivered':states.length>0&&states.every(x=>x==='cancelled')?'cancelled':'other';
-     const day=r.created_at.slice(0,10);
+     const day=localDateKey(r.created_at);
      return (!dateFrom||day>=dateFrom)&&(!dateTo||day<=dateTo)&&(historyDriver==='all'||r.driver_id===historyDriver)&&(historyStatus==='all'||state===historyStatus)&&(!historySearch||`${r.label} ${r.id} ${ids.join(' ')}`.toLowerCase().includes(historySearch.toLowerCase()));
     }).sort((a,b)=>historySort==='newest'?b.created_at.localeCompare(a.created_at):a.created_at.localeCompare(b.created_at));
     return <>
@@ -162,27 +166,30 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
          const states=assigned.map(a=>orderStates[a.order_id]);
          const label=states.length>0&&states.every(x=>x==='delivered')?'Entregada':states.length>0&&states.every(x=>x==='cancelled')?'Cancelada':'Cerrada';
          const isOpen=expandedRoute===r.id;
-         return <tr key={r.id} className={isOpen?'delivery-history-open':''}>
-          <td><strong>{r.label}</strong><small>{new Date(r.created_at).toLocaleDateString('es-GT')}</small></td>
-          <td>{drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor'}</td>
-          <td>{assigned.length}</td>
-          <td><span className="delivery-history-status">{label}</span></td>
-          <td><button type="button" className="delivery-history-detail-button" aria-expanded={isOpen} onClick={()=>setExpandedRoute(isOpen?null:r.id)}>{isOpen?'Ocultar':'Ver detalles'}</button>
-           {isOpen&&<div className="delivery-history-inline-detail">
-            <strong>Pedidos de esta salida</strong>
-            {assigned.map(a=>{
-             const o=orders.find(item=>item.id===a.order_id);
-             return <div key={a.order_id} className="delivery-history-order-detail">
-              <span>#{a.order_id.slice(0,8)} · {o?.customer_name||'Cliente no cargado'}</span>
-              <span>{orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]||'Estado no cargado'}</span>
-              <strong>{o?money(o.total_cents):'—'}</strong>
-             </div>;
-            })}
-            <small>Salida: {new Date(r.created_at).toLocaleString('es-GT')}{r.dispatched_at?` · Despacho: ${new Date(r.dispatched_at).toLocaleString('es-GT')}`:''}</small>
-            <small>Los importes son valores de pedidos, no cobros confirmados.</small>
-           </div>}
-          </td>
-         </tr>;
+         return <Fragment key={r.id}>
+           <tr className={isOpen?'delivery-history-open':''}>
+            <td><strong>Salida #{r.id.slice(0,8)}</strong><small>{formatLocalDateTime(r.created_at)}</small></td>
+            <td>{drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor'}</td>
+            <td>{assigned.length}</td>
+            <td><span className="delivery-history-status">{label}</span></td>
+            <td><button type="button" className="delivery-history-detail-button" aria-expanded={isOpen} onClick={()=>setExpandedRoute(isOpen?null:r.id)}>{isOpen?'Ocultar':'Ver detalles'}</button></td>
+           </tr>
+           {isOpen&&<tr className="delivery-history-detail-row"><td colSpan={5}>
+            <div className="delivery-history-full-detail">
+             <strong>Pedidos de esta salida</strong>
+             {assigned.map(a=>{
+              const o=orders.find(item=>item.id===a.order_id);
+              return <div key={a.order_id} className="delivery-history-order-detail">
+               <span>#{a.order_id.slice(0,8)} · {o?.customer_name||'Cliente no cargado'}</span>
+               <span>{orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]||'Estado no cargado'}</span>
+               <strong>{o?money(o.total_cents):'—'}</strong>
+              </div>;
+             })}
+             <small>Creada: {formatLocalDateTime(r.created_at)}{r.dispatched_at?` · Despachada: ${formatLocalDateTime(r.dispatched_at)}`:''}</small>
+             <small>Horarios de Guatemala. Los importes corresponden a pedidos, no a cobros confirmados.</small>
+            </div>
+           </td></tr>}
+          </Fragment>;
         })}</tbody>
        </table>
       </div>}

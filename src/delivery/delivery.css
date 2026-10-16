@@ -40,3 +40,17 @@
  .delivery-history-table td:last-child{padding-top:9px}
  .delivery-history-inline-detail{min-width:0}
 }
+
+/* Detalle del historial: fila completa, sin deformar la columna de acciones. */
+.delivery-history-detail-row>td{padding:0 10px 14px!important;background:#fff}
+.delivery-history-full-detail{width:100%;padding:16px;background:#f7fafa;border:1px solid #dce8e7;border-radius:8px;display:grid;gap:10px;box-sizing:border-box}
+.delivery-history-full-detail>small{font-size:12px;color:#52686d;line-height:1.5}
+.delivery-history-full-detail .delivery-history-order-detail{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center}
+.delivery-history-full-detail .delivery-history-order-detail strong{text-align:right}
+@media(max-width:700px){
+ .delivery-history-table tr.delivery-history-detail-row{padding:0;border:0;margin-top:-8px}
+ .delivery-history-detail-row>td{padding:0 0 12px!important}
+ .delivery-history-full-detail{padding:12px}
+ .delivery-history-full-detail .delivery-history-order-detail{grid-template-columns:1fr;gap:4px}
+ .delivery-history-full-detail .delivery-history-order-detail strong{text-align:left}
+}
