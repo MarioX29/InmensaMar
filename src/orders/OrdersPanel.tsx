@@ -7,6 +7,8 @@ type Order = {id:string;created_at:string;customer_name:string;customer_phone:st
 type Item = {variant_id:string;quantity:number};
 type OrderLine = {order_id:string;variant_id:string;quantity:number;unit_price_cents:number;line_total_cents:number};
 type VariantLabel = {id:string;name:string;base_unit:string};
+type PaymentEvent = {order_id:string;event_kind:'pending'|'payment';method:string;amount_cents:number;verified_at:string|null};
+type PaymentMethod = 'cash'|'transfer_reported';
 const activeStatuses = ['received','accepted','preparing','ready','out_for_delivery'];
 const cash=(n:number)=>`Q ${(n/100).toFixed(2)}`;
 const units:Record<Product['unit'],string>={lb:'lb',unit:'unidad',package:'paquete'};
@@ -20,6 +22,11 @@ export function OrdersPanel(){
   const [products,setProducts]=useState<Product[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
   const [orderLines,setOrderLines]=useState<OrderLine[]>([]);
+  const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
+  const [payOrderId,setPayOrderId]=useState<string|null>(null);
+  const [payMethod,setPayMethod]=useState<PaymentMethod>('cash');
+  const [payTendered,setPayTendered]=useState('');
+  const [paymentAttempt,setPaymentAttempt]=useState<{orderId:string;requestId:string;method:PaymentMethod;tenderedCents:number}|null>(null);
   const [variantLabels,setVariantLabels]=useState<Record<string,VariantLabel>>({});
   const [orderFilter,setOrderFilter]=useState<'active'|'history'>('active');
   const [items,setItems]=useState<Item[]>([]);
@@ -31,12 +38,13 @@ export function OrdersPanel(){
   const total=selected.reduce((s,{i,p})=>s+Math.round(i.quantity*p.price_cents),0);
   const load=useCallback(async()=>{
     if(!supabase)return;
-    const [variants,lots,orderResult]=await Promise.all([
+    const [variants,lots,orderResult,paymentResult]=await Promise.all([
       supabase.from('product_variants').select('id,name,base_unit,price_cents').eq('active',true),
       supabase.from('inventory_lots').select('variant_id,qty_on_hand,qty_reserved,status,use_by'),
-      supabase.from('customer_orders').select('id,created_at,customer_name,customer_phone,delivery_address,notes,status,total_cents').order('created_at',{ascending:false}).limit(60)
+      supabase.from('customer_orders').select('id,created_at,customer_name,customer_phone,delivery_address,notes,status,total_cents').order('created_at',{ascending:false}).limit(60),
+      supabase.from('delivery_payment_events').select('order_id,event_kind,method,amount_cents,verified_at')
     ]);
-    const failure=variants.error||lots.error||orderResult.error;
+    const failure=variants.error||lots.error||orderResult.error||paymentResult.error;
     if(failure){setError(message(failure));return;}
     const today=new Date().toISOString().slice(0,10);
     const stock=new Map<string,number>();
@@ -63,7 +71,7 @@ export function OrdersPanel(){
       setOrderLines(lines);
       setVariantLabels(Object.fromEntries(labels.map(v=>[v.id,v])));
     }else{setOrderLines([]);setVariantLabels({});}
-    setOrders(fetchedOrders);setError('');
+    setOrders(fetchedOrders);setPaymentEvents((paymentResult.data||[]) as PaymentEvent[]);setError('');
   },[]);
   useEffect(()=>{void load();},[load]);
   function adjust(p:Product,delta:number){
@@ -100,6 +108,46 @@ export function OrdersPanel(){
     if(failure)setError(message(failure));else setNotice(action==='accept'?'Pedido aceptado y en preparación. Inventario reservado.':action==='cancel'?'Pedido cancelado. Reservas liberadas.':action==='prepare'?'Pedido en preparación.':'Pedido listo para entregar.');
     await load();setBusy(false);
   }
+  const paymentFor=(id:string)=>paymentEvents.find(e=>e.order_id===id&&e.event_kind==='payment');
+  const pendingFor=(id:string)=>paymentEvents.some(e=>e.order_id===id&&e.event_kind==='pending');
+  function paymentLabel(id:string){
+    const payment=paymentFor(id);
+    if(payment?.method==='cash')return 'Cobrado en efectivo';
+    if(payment?.method==='transfer_reported')return payment.verified_at?'Transferencia verificada':'Transferencia por verificar';
+    if(pendingFor(id))return 'Pago pendiente';
+    return 'Sin registro de cobro';
+  }
+  function openPayment(id:string){
+    if(busy||paymentAttempt)return;
+    setPayOrderId(id);setPayMethod('cash');setPayTendered('');setError('');
+  }
+  async function collectPayment(){
+    if(!supabase||busy||!payOrderId)return;
+    const order=orders.find(o=>o.id===payOrderId);
+    if(!order||order.status!=='delivered'||!pendingFor(order.id)||paymentFor(order.id)){
+      setError('Este pedido ya no tiene un cobro pendiente disponible. Actualizá los pedidos.');return;
+    }
+    const value=Number(payTendered);
+    const tenderedCents=payMethod==='cash'?Math.round(value*100):0;
+    if(payMethod==='cash'&&(!payTendered.trim()||!Number.isFinite(value)||!Number.isSafeInteger(tenderedCents)||tenderedCents<order.total_cents)){
+      setError('Ingresá efectivo suficiente para cubrir el total del pedido.');return;
+    }
+    if(paymentAttempt&&(paymentAttempt.orderId!==order.id||paymentAttempt.method!==payMethod||paymentAttempt.tenderedCents!==tenderedCents)){
+      setError('Existe un cobro con resultado incierto. Verificá el registro antes de cambiar los datos.');return;
+    }
+    const attempt=paymentAttempt||{orderId:order.id,requestId:crypto.randomUUID(),method:payMethod,tenderedCents};
+    setPaymentAttempt(attempt);setBusy(true);setError('');setNotice('');
+    try{
+      const {error:failure}=await supabase.rpc('confirm_delivery_with_payment',{
+        p_order_id:attempt.orderId,p_request_id:attempt.requestId,p_method:attempt.method,p_cash_tendered_cents:attempt.tenderedCents
+      });
+      if(failure){setError(message(failure)+' Verificá Supabase antes de volver a intentar.');return;}
+      setPaymentAttempt(null);setPayOrderId(null);setPayTendered('');
+      setNotice('Cobro posterior registrado. El pedido continúa entregado.');
+      await load();
+    }catch(e){setError(message(e)+' Resultado incierto: verificá antes de reintentar.');}
+    finally{setBusy(false);}
+  }
   const activeOrders=orders.filter(o=>activeStatuses.includes(o.status)).sort((a,b)=>a.created_at.localeCompare(b.created_at));
   const historyOrders=orders.filter(o=>!activeStatuses.includes(o.status));
   const visibleOrders=orderFilter==='active'?activeOrders:historyOrders;
@@ -134,9 +182,30 @@ export function OrdersPanel(){
         {o.status==='accepted'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'prepare')}>Continuar preparación (pedido anterior)</button>}
         {o.status==='preparing'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'ready')}>Marcar listo</button>}
         {['received','accepted','preparing','ready'].includes(o.status)&&<button className="op-outline" disabled={busy} onClick={()=>{if(window.confirm('¿Cancelar este pedido? Se liberarán las reservas.'))void act(o.id,'cancel');}}>Cancelar pedido</button>}
+        {o.status==='delivered'&&<div className="op-payment-status"><span>Estado del pago</span><strong>{paymentLabel(o.id)}</strong>{pendingFor(o.id)&&!paymentFor(o.id)&&<span>Saldo por cobrar: {cash(Number(o.total_cents))}</span>}</div>}
+        {o.status==='delivered'&&pendingFor(o.id)&&!paymentFor(o.id)&&<button type="button" className="op-primary" disabled={busy||!!paymentAttempt} onClick={()=>openPayment(o.id)}>Registrar cobro</button>}
         {o.status==='ready'&&<small>Listo para asignar a reparto.</small>}
       </div></article>)}</section></>}
     </div>
+    {payOrderId&&(()=>{
+      const order=orders.find(o=>o.id===payOrderId);
+      if(!order)return null;
+      const amount=Number(payTendered);
+      const cents=Number.isFinite(amount)?Math.round(amount*100):0;
+      const validCash=payTendered.trim()!==''&&Number.isFinite(amount)&&Number.isSafeInteger(cents)&&cents>=Number(order.total_cents);
+      return <div className="op-payment-backdrop"><div className="op-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="op-payment-title">
+        <h2 id="op-payment-title">Registrar cobro pendiente</h2>
+        <p>Pedido #{order.id.slice(0,8)} · {order.customer_name}</p>
+        <div className="op-payment-total"><span>Saldo por cobrar</span><strong>{cash(Number(order.total_cents))}</strong></div>
+        <fieldset><legend>¿Cómo pagó el cliente?</legend>
+          <label><input type="radio" checked={payMethod==='cash'} disabled={busy||!!paymentAttempt} onChange={()=>setPayMethod('cash')}/> Efectivo</label>
+          <label><input type="radio" checked={payMethod==='transfer_reported'} disabled={busy||!!paymentAttempt} onChange={()=>setPayMethod('transfer_reported')}/> Transferencia reportada</label>
+        </fieldset>
+        {payMethod==='cash'?<div className="op-payment-cash"><label htmlFor="op-payment-tendered">Efectivo recibido (Q)</label><input id="op-payment-tendered" type="number" inputMode="decimal" step="0.01" min="0" value={payTendered} disabled={busy||!!paymentAttempt} onChange={e=>setPayTendered(e.target.value)} placeholder="Ej. 50.00"/><div className="op-payment-total"><span>Cambio a devolver</span><strong>{validCash?cash(cents-Number(order.total_cents)):'—'}</strong></div></div>:<p>La transferencia quedará reportada hasta que el administrador la verifique en el banco.</p>}
+        {paymentAttempt&&<p className="op-payment-warning">Hay una solicitud pendiente de verificar. No cambies los datos ni generés otro intento.</p>}
+        <div className="op-payment-actions"><button type="button" className="op-outline" disabled={busy||!!paymentAttempt} onClick={()=>setPayOrderId(null)}>Volver</button><button type="button" className="op-primary" disabled={busy||!!paymentAttempt||(payMethod==='cash'&&!validCash)} onClick={()=>void collectPayment()}>{busy?'Registrando…':'Confirmar cobro'}</button></div>
+      </div></div>;
+    })()}
   </div>;
 }
 
