@@ -5,6 +5,7 @@ type Driver={user_id:string;display_name:string};
 type Route={id:string;label:string;driver_id:string;created_at:string;dispatched_at:string|null;status:string};
 type Order={id:string;customer_name:string;total_cents:number;status?:string};
 type Assignment={order_id:string;route_id:string;stop_order:number};
+type PaymentEvent={order_id:string;event_kind:'pending'|'payment';method:string;amount_cents:number;verified_at:string|null};
 type DriverOrder={order_id:string;route_id:string;route_label:string;customer_name:string;customer_phone:string;delivery_address:string;total_cents:number;stop_order:number;order_status:string};
 const money=(n:number)=>`Q ${(n/100).toFixed(2)}`;
 const GUATEMALA_TZ='America/Guatemala';
@@ -18,6 +19,10 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [orders,setOrders]=useState<Order[]>([]);
  const [assignments,setAssignments]=useState<Assignment[]>([]);
  const [mine,setMine]=useState<DriverOrder[]>([]);
+ const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
+ const [paymentMethod,setPaymentMethod]=useState<'cash'|'transfer_reported'|'pending'>('cash');
+ const [tendered,setTendered]=useState('');
+ const paymentAttempt=useRef<{orderId:string;requestId:string;method:string;tenderedCents:number}|null>(null);
  const [orderStates,setOrderStates]=useState<Record<string,string>>({});
  const [driver,setDriver]=useState('');
  const [chosen,setChosen]=useState<string[]>([]);
@@ -36,20 +41,21 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const load=useCallback(async()=>{
   if(!supabase)return;
   if(staffRole==='driver'){
-   const result=await supabase.rpc('my_delivery_orders_v2');
-   if(result.error)setError(errorText(result.error));else {setMine(result.data||[]);setOrderStates(Object.fromEntries((result.data||[]).map((x:DriverOrder)=>[x.order_id,x.order_status])));setError('');}
+   const [result,payments]=await Promise.all([supabase.rpc('my_delivery_orders_v2'),supabase.from('delivery_payment_events').select('order_id,event_kind,method,amount_cents,verified_at')]);
+   if(result.error||payments.error)setError(errorText(result.error||payments.error));else {setMine(result.data||[]);setPaymentEvents(payments.data||[]);setOrderStates(Object.fromEntries((result.data||[]).map((x:DriverOrder)=>[x.order_id,x.order_status])));setError('');}
    return;
   }
-  const [d,r,o,a,m]=await Promise.all([
+  const [d,r,o,a,m,p]=await Promise.all([
    supabase.from('staff_profiles').select('user_id,display_name').in('role',['driver','admin']).eq('active',true),
    supabase.from('delivery_routes').select('id,label,driver_id,created_at,dispatched_at,status').order('created_at',{ascending:false}).limit(100),
    supabase.from('customer_orders').select('id,customer_name,total_cents,status').in('status',['ready','out_for_delivery','delivered','cancelled']).order('created_at',{ascending:false}).limit(100),
    supabase.from('delivery_assignments').select('order_id,route_id,stop_order').limit(500),
-   supabase.rpc('my_delivery_orders_v2')
+   supabase.rpc('my_delivery_orders_v2'),
+   supabase.from('delivery_payment_events').select('order_id,event_kind,method,amount_cents,verified_at')
   ]);
-  const issue=[d,r,o,a].find(x=>x.error)?.error;
+  const issue=[d,r,o,a,p].find(x=>x.error)?.error;
   if(issue){setError(errorText(issue));return;}
-  setDrivers(d.data||[]);setRoutes(r.data||[]);setOrders(o.data||[]);setAssignments(a.data||[]);
+  setDrivers(d.data||[]);setRoutes(r.data||[]);setOrders(o.data||[]);setAssignments(a.data||[]);setPaymentEvents(p.data||[]);
   setOrderStates(Object.fromEntries((o.data||[]).map(x=>[x.id,x.status])));
   if(!m.error)setMine(m.data||[]);
   setError('');
@@ -95,15 +101,33 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   else {setNotice('Salida despachada. El inventario reservado fue descontado.');await load();}
   setBusy(false);
  }
- async function delivered(orderId:string){
+ async function delivered(orderId:string, totalCents:number){
   if(!supabase||busy)return;
+  const cents=paymentMethod==='cash'?Math.round(Number(tendered)*100):0;
+  if(paymentMethod==='cash'&&(!tendered.trim()||!Number.isFinite(Number(tendered))||cents<totalCents||!Number.isSafeInteger(cents))){setError('Ingresá el efectivo recibido, igual o mayor al total.');return;}
+  const previous=paymentAttempt.current;
+  if(previous&&(previous.orderId!==orderId||previous.method!==paymentMethod||previous.tenderedCents!==cents)){
+   setError('Hay un cobro con resultado incierto. Actualizá y verificá antes de cambiar los datos.');return;
+  }
+  const attempt=previous||{orderId,requestId:crypto.randomUUID(),method:paymentMethod,tenderedCents:cents};
+  paymentAttempt.current=attempt;
   setBusy(true);setError('');
-  const {error:e}=await supabase.rpc('confirm_delivery',{p_order_id:orderId});
-  if(e)setError(errorText(e));else {setNotice('Entrega confirmada. El pago sigue pendiente de registrar.');await load();}
-  setBusy(false);
+  try {
+   const {error:e}=await supabase.rpc('confirm_delivery_with_payment',{
+    p_order_id:orderId,p_request_id:attempt.requestId,p_method:attempt.method,
+    p_cash_tendered_cents:attempt.tenderedCents,p_cash_received_by:null
+   });
+   if(e){setError(errorText(e)+' Si hubo un error de conexión, actualizá y verificá el cobro antes de reintentar.');return;}
+   paymentAttempt.current=null;setConfirm(null);setTendered('');setPaymentMethod('cash');
+   setNotice('Entrega y estado de cobro registrados. Transferencias reportadas requieren verificación.');
+   await load();
+  }catch(e){setError(errorText(e)+' Verificá antes de reintentar.');}
+  finally{setBusy(false);}
  }
+ const hasPayment=(orderId:string)=>paymentEvents.some(e=>e.order_id===orderId&&e.event_kind==='payment');
+ const pendingLate=orders.filter(o=>o.status==='delivered'&&!hasPayment(o.id)&&paymentEvents.some(e=>e.order_id===o.id&&e.event_kind==='pending'));
  return <section className="delivery-module">
-  <p className="delivery-warning">Confirmar salida asigna los pedidos y registra su salida física. Marcar entregado no registra ningún pago.</p>
+  <p className="delivery-warning">Confirmar salida asigna los pedidos y registra su salida física. Al marcar entregado registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada no está verificada.</p>
   {error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>En reparto</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
@@ -199,18 +223,19 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   {mine.length>0&&(staffRole==='driver'||view==='active')&&<section className="delivery-card"><h2>Mis entregas asignadas</h2>{mine.map(o=><div className="delivery-route" key={o.order_id}>
    <strong>{o.stop_order}. {o.customer_name}</strong><small>{o.route_label} · {o.delivery_address}</small><small>{o.customer_phone} · {money(o.total_cents)}</small>
    <a target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}>Abrir dirección en Maps</a>
-   {orderStates[o.order_id]==='out_for_delivery'&&<button className="delivery-primary" disabled={busy} onClick={()=>setConfirm({kind:'delivery',id:o.order_id})}>Marcar entregado</button>}
+   {orderStates[o.order_id]==='out_for_delivery'&&<button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:o.order_id});}}>Marcar entregado</button>}
   </div>)}</section>}
 
+  {staffRole!=='driver'&&view==='active'&&pendingLate.length>0&&<section className="delivery-card"><h2>Cobros pendientes después de la entrega</h2><p className="delivery-subtitle">Solo pedidos entregados con un pendiente registrado.</p>{pendingLate.map(o=><div className="delivery-route" key={o.id}><strong>Pedido #{o.id.slice(0,8)} · {o.customer_name}</strong><small>{money(o.total_cents)} pendiente</small><button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:o.id});}}>Registrar cobro posterior</button></div>)}</section>}
   {confirm&&<div className="delivery-confirm-backdrop" role="presentation">
    <div className="delivery-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delivery-confirm-title">
-    <h3 id="delivery-confirm-title">{confirm.kind==='delivery'?'¿Marcar pedido como entregado?':'¿Confirmar salida?'}</h3>
-    <p>{confirm.kind==='delivery'?'Confirmá que el cliente recibió el pedido. Esto no registra ningún cobro.':'Confirmá que los productos salieron del local. Esta acción descuenta el inventario reservado.'}</p>
+    <h3 id="delivery-confirm-title">{confirm.kind==='delivery'?(orderStates[confirm.id]==='delivered'?'¿Registrar cobro pendiente?':'¿Entregar y registrar cobro?'):'¿Confirmar salida?'}</h3>
+    <p>{confirm.kind==='delivery'?'Elegí cómo pagó el cliente. Las transferencias quedan reportadas hasta su verificación.':'Confirmá que los productos salieron del local. Esta acción descuenta el inventario reservado.'}</p>
     <div className="delivery-confirm-actions">
-     <button type="button" disabled={busy} onClick={()=>setConfirm(null)}>Volver</button>
+     <button type="button" disabled={busy} onClick={()=>{if(!paymentAttempt.current)setConfirm(null);}}>Volver</button>
      <button type="button" className="delivery-primary" disabled={busy} onClick={()=>{
-      const action=confirm;setConfirm(null);
-      if(action.kind==='delivery')void delivered(action.id);
+      const action=confirm;
+      if(action.kind==='delivery')void delivered(action.id,mine.find(o=>o.order_id===action.id)?.total_cents||orders.find(o=>o.id===action.id)?.total_cents||0);
       else if(action.id==='new')void prepare();
       else void dispatch(action.id);
      }}>{busy?'Procesando…':'Sí, confirmar'}</button>

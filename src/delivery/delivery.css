@@ -54,3 +54,5 @@
  .delivery-history-full-detail .delivery-history-order-detail{grid-template-columns:1fr;gap:4px}
  .delivery-history-full-detail .delivery-history-order-detail strong{text-align:left}
 }
+
+.delivery-payment-form{display:grid;gap:9px;margin:12px 0 18px}.delivery-payment-form label{font-weight:600;font-size:14px}.delivery-payment-form input,.delivery-payment-form select{width:100%;min-height:44px;border:1px solid #b8cdd0;border-radius:8px;padding:9px;background:#fff;color:#172e3c;font:inherit}.delivery-payment-form small{color:#536b72;line-height:1.45}
