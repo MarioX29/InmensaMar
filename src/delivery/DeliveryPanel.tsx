@@ -24,7 +24,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   if(!supabase)return;
   if(staffRole==='driver'){
    const result=await supabase.rpc('my_delivery_orders_v2');
-   if(result.error)setError(errorText(result.error));else {setMine(result.data||[]);setOrderStates(Object.fromEntries((result.data||[]).map(x=>[x.order_id,x.order_status])));setError('');}
+   if(result.error)setError(errorText(result.error));else {setMine(result.data||[]);setOrderStates(Object.fromEntries((result.data||[]).map((x:DriverOrder)=>[x.order_id,x.order_status])));setError('');}
    return;
   }
   const [d,r,o,a,m]=await Promise.all([
