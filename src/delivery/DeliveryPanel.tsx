@@ -151,12 +151,42 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
      const day=r.created_at.slice(0,10);
      return (!dateFrom||day>=dateFrom)&&(!dateTo||day<=dateTo)&&(historyDriver==='all'||r.driver_id===historyDriver)&&(historyStatus==='all'||state===historyStatus)&&(!historySearch||`${r.label} ${r.id} ${ids.join(' ')}`.toLowerCase().includes(historySearch.toLowerCase()));
     }).sort((a,b)=>historySort==='newest'?b.created_at.localeCompare(a.created_at):a.created_at.localeCompare(b.created_at));
-    return <><p className="delivery-subtitle">{filtered.length} salidas encontradas en los registros cargados.</p>{!filtered.length&&<p>No hay salidas con estos filtros.</p>}{filtered.map(r=>{
-     const assigned=assignments.filter(a=>a.route_id===r.id).sort((a,b)=>a.stop_order-b.stop_order);
-     const states=assigned.map(a=>orderStates[a.order_id]);
-     const label=states.length&&states.every(x=>x==='delivered')?'Entregada':states.length&&states.every(x=>x==='cancelled')?'Cancelada':'Cerrada';
-     return <div className="delivery-history-item" key={r.id}><button type="button" className="delivery-history-toggle" aria-expanded={expandedRoute===r.id} onClick={()=>setExpandedRoute(expandedRoute===r.id?null:r.id)}><span><strong>{r.label}</strong><small>{new Date(r.created_at).toLocaleString('es-GT')} · {drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor'} · {assigned.length} pedidos</small></span><span>{label} {expandedRoute===r.id?'▲':'▼'}</span></button>{expandedRoute===r.id&&<div className="delivery-history-detail">{assigned.map(a=><div key={a.order_id}>Pedido #{a.order_id.slice(0,8)} · {orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]||'Sin estado cargado'}</div>)}</div>}</div>;
-    })}</>;
+    return <>
+     <p className="delivery-subtitle">{filtered.length} salidas encontradas en los registros cargados.</p>
+     {!filtered.length?<p>No hay salidas con estos filtros.</p>:
+      <div className="delivery-history-table-wrap">
+       <table className="delivery-history-table">
+        <thead><tr><th scope="col">Salida</th><th scope="col">Repartidor</th><th scope="col">Pedidos</th><th scope="col">Estado</th><th scope="col">Detalle</th></tr></thead>
+        <tbody>{filtered.map(r=>{
+         const assigned=assignments.filter(a=>a.route_id===r.id).sort((a,b)=>a.stop_order-b.stop_order);
+         const states=assigned.map(a=>orderStates[a.order_id]);
+         const label=states.length>0&&states.every(x=>x==='delivered')?'Entregada':states.length>0&&states.every(x=>x==='cancelled')?'Cancelada':'Cerrada';
+         const isOpen=expandedRoute===r.id;
+         return <tr key={r.id} className={isOpen?'delivery-history-open':''}>
+          <td><strong>{r.label}</strong><small>{new Date(r.created_at).toLocaleDateString('es-GT')}</small></td>
+          <td>{drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor'}</td>
+          <td>{assigned.length}</td>
+          <td><span className="delivery-history-status">{label}</span></td>
+          <td><button type="button" className="delivery-history-detail-button" aria-expanded={isOpen} onClick={()=>setExpandedRoute(isOpen?null:r.id)}>{isOpen?'Ocultar':'Ver detalles'}</button>
+           {isOpen&&<div className="delivery-history-inline-detail">
+            <strong>Pedidos de esta salida</strong>
+            {assigned.map(a=>{
+             const o=orders.find(item=>item.id===a.order_id);
+             return <div key={a.order_id} className="delivery-history-order-detail">
+              <span>#{a.order_id.slice(0,8)} · {o?.customer_name||'Cliente no cargado'}</span>
+              <span>{orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]||'Estado no cargado'}</span>
+              <strong>{o?money(o.total_cents):'—'}</strong>
+             </div>;
+            })}
+            <small>Salida: {new Date(r.created_at).toLocaleString('es-GT')}{r.dispatched_at?` · Despacho: ${new Date(r.dispatched_at).toLocaleString('es-GT')}`:''}</small>
+            <small>Los importes son valores de pedidos, no cobros confirmados.</small>
+           </div>}
+          </td>
+         </tr>;
+        })}</tbody>
+       </table>
+      </div>}
+    </>;
    })()}
   </section>}
   {mine.length>0&&(staffRole==='driver'||view==='active')&&<section className="delivery-card"><h2>Mis entregas asignadas</h2>{mine.map(o=><div className="delivery-route" key={o.order_id}>
