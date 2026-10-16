@@ -140,7 +140,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
     <label>Hasta<input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/></label>
     <label>Repartidor<select value={historyDriver} onChange={e=>setHistoryDriver(e.target.value)}><option value="all">Todos</option>{drivers.map(d=><option key={d.user_id} value={d.user_id}>{d.display_name}</option>)}</select></label>
     <label>Estado<select value={historyStatus} onChange={e=>setHistoryStatus(e.target.value)}><option value="all">Todos</option><option value="delivered">Entregadas</option><option value="cancelled">Canceladas</option><option value="other">Otras cerradas</option></select></label>
-    <label>Orden<select value={historySort} onChange={e=>setHistorySort(e.target.value)}><option value="newest">Más recientes</option><option value="oldest">Más antiguas</option></select></label>
+    <label>Orden<select value={historySort} onChange={e=>{const value=e.target.value;if(value==='newest'||value==='oldest')setHistorySort(value);}}><option value="newest">Más recientes</option><option value="oldest">Más antiguas</option></select></label>
     <label>Buscar<input type="search" placeholder="Número de pedido o salida" value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/></label>
    </div>
    {(()=>{
