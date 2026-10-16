@@ -3,3 +3,18 @@
 .op-actions button{min-height:44px;font-size:14px;cursor:pointer}
 .op-actions small{font-size:12px;color:#586d73}
 @media(max-width:700px){.op-actions{flex-direction:column;align-items:stretch}.op-actions button{width:100%}}
+
+/* Core 0.5C: detalles visibles y separación de pedidos activos e historial */
+.op-filter-tabs{display:flex;gap:8px;margin:10px 0 16px;flex-wrap:wrap}
+.op-filter-tabs button{border:1px solid #b9caca;border-radius:7px;background:#fff;color:#16394a;padding:11px 17px;min-height:44px;font-size:14px;cursor:pointer}
+.op-filter-tabs button.on{background:#247B87;border-color:#247B87;color:#fff;font-weight:700}
+.op-order-items{border-top:1px solid #e2e9e6;margin-top:12px;padding-top:12px}
+.op-order-items>strong{display:block;font-size:14px;margin-bottom:7px}
+.op-order-item{display:flex;justify-content:space-between;align-items:start;gap:12px;padding:8px 0;border-bottom:1px solid #eef2f0;font-size:14px}
+.op-order-item span b,.op-order-item span small{display:block}
+.op-order-item span small{font-size:12px;color:#526d76;margin-top:4px}
+.op-order-item>strong{white-space:nowrap}
+.op-notes{background:#f4f7f5;border-radius:6px;padding:10px;font-size:14px!important;color:#16394a!important}
+.op-item-missing{color:#a44b2f!important;font-size:13px!important}
+.op-empty{grid-column:1/-1;color:#526d76;padding:20px 4px}
+@media(max-width:700px){.op-filter-tabs button{flex:1}.op-order-item{font-size:14px}}
