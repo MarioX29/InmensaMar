@@ -14,3 +14,5 @@
 .session-strip{background:#e5eeee;color:#142f43;padding:7px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px}
 .session-strip button{background:transparent;border:0;text-decoration:underline;color:#165f6b;font-size:12px;min-height:30px}
 @media(max-width:740px){.auth-card{padding:22px}.session-strip{padding:5px 12px}}
+
+.heading-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.refresh-btn{display:flex;align-items:center;gap:7px;background:white;border:1px solid #d6dfdf;color:#142f43;padding:9px 11px;font-size:12px;white-space:nowrap}.error-panel,.warning-panel{padding:13px 15px;margin-bottom:16px;font-size:13px;line-height:1.5;border:1px solid #e3b7a8;background:#fff4ef;color:#783b28}.warning-panel{background:#fff8e9;border-color:#e4cba0;color:#72521c}.error-panel p{margin:5px 0 0}.product-action button:disabled{opacity:.35}@media(max-width:740px){.heading-actions{align-items:flex-start}.refresh-btn{padding:9px}.notice{bottom:calc(130px + env(safe-area-inset-bottom))}}

@@ -1,33 +1,38 @@
 # Inmensa Mar
 
-Aplicación web para la operación de mostrador de Inmensa Mar.
-
-## Estado
-
-La aplicación incluye autenticación de personal con Supabase y un mostrador demostrativo. Las ventas, existencias y reportes del mostrador siguen siendo locales; **no se registran en PostgreSQL**. No utilizar para operaciones reales.
+Aplicación web de operación para el mostrador.
 
 ## Requisitos
 
-- Node.js 20 o superior
-- npm
-- Proyecto Supabase con la migración Core V2 aplicada
-- Usuario creado en Supabase Authentication y perfil activo en `public.staff_profiles`
+- Node.js 22
+- Proyecto Supabase con migración `0002_core_v2.sql` aplicada
+- Usuario activo en `staff_profiles` con rol `admin` o `counter`
 
 ## Desarrollo
 
-1. Copiar `.env.example` a `.env.local`.
-2. Completar `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`.
-3. Ejecutar `npm install` y `npm run dev`.
-4. Ejecutar `npm run build` antes de publicar.
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
 
-## Despliegue en Cloudflare Pages
+Variables requeridas: `VITE_SUPABASE_URL` (URL base, sin `/rest/v1`) y `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
-- Comando de compilación: `npm run build`
-- Directorio de salida: `dist`
-- Variables de entorno: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
+## Estado de Core 0.3
 
-Utilizar únicamente la clave **publishable** de Supabase en el frontend. No incluir contraseñas de base de datos, tokens personales ni claves `service_role`/secretas en el repositorio o en variables `VITE_`.
+- Autenticación de personal con Supabase Auth.
+- Catálogo, existencias y últimas 100 ventas consultadas desde PostgreSQL.
+- Venta de mostrador mediante RPC `register_counter_sale`.
+- Cobro en efectivo mediante RPC `record_sale_payment`.
+- Recuperación de intentos de venta/cobro con identificadores persistidos localmente.
+- Actualización manual y cada 15 segundos mientras la pestaña esté visible.
 
-## Seguridad
+**Limitaciones:** no incluye pedidos, preparación de productos, pagos por transferencia ni cierre de caja. El registro de venta y el registro de pago son dos transacciones separadas; si el pago falla, debe reintentarse o conciliarse antes de continuar. No se debe utilizar en producción hasta completar pruebas de seguridad, concurrencia, restauración y conciliación.
 
-El inicio de sesión comprueba el perfil activo del personal. Las políticas RLS y las funciones de base de datos son la barrera de autorización para operaciones reales; ocultar pantallas en React no sustituye permisos del servidor. La integración de ventas e inventario está pendiente.
+## Datos de prueba
+
+`supabase/seed_test.sql` agrega cinco variantes ficticias y sus lotes, solo si aún no existen lotes para esas variantes. Ejecutar únicamente en una base destinada a pruebas. Los datos son ficticios.
+
+## Despliegue
+
+Cloudflare Pages: `npm run build`, salida `dist`. Configurar las variables de entorno en Production y Preview según corresponda.
