@@ -18,6 +18,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [driver,setDriver]=useState('');
  const [chosen,setChosen]=useState<string[]>([]);
  const [busy,setBusy]=useState(false);
+ const [confirm,setConfirm]=useState<{kind:'outing'|'delivery';id:string}|null>(null);
  const [error,setError]=useState('');const [notice,setNotice]=useState('');
  const attempt=useRef<{requestId:string;driverId:string;orderIds:string[]}|null>(null);
  const load=useCallback(async()=>{
@@ -53,13 +54,13 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   if(!attempt.current)attempt.current={requestId:crypto.randomUUID(),driverId:driver,orderIds:ids};
   setBusy(true);setError('');setNotice('');
   try{
-   const {data,error:e}=await supabase.rpc('prepare_delivery_outing',{
+   const {data,error:e}=await supabase.rpc('prepare_and_dispatch_outing',{
     p_request_id:attempt.current.requestId,p_driver_id:driver,p_order_ids:ids
    });
    if(e){setError(`${errorText(e)}. Si hubo un problema de conexión, no creés otra salida hasta verificar.`);return;}
    attempt.current=null;
    setChosen([]);
-   setNotice(`Salida preparada (${String(data).slice(0,8)}). ${ids.length} pedidos asignados. Aún no despachados.`);
+   setNotice(`Salida confirmada (${String(data).slice(0,8)}). ${ids.length} pedidos en reparto.`);
    await load();
   }catch(e){setError(`No se pudo confirmar la salida: ${errorText(e)}. No repitás con otra solicitud.`);}
   finally{setBusy(false);}
@@ -75,7 +76,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   setBusy(false);
  }
  async function dispatch(routeId:string){
-  if(!supabase||busy||!window.confirm('¿Confirmás que los productos salieron del local? Esta acción descontará el inventario reservado.'))return;
+  if(!supabase||busy)return;
   setBusy(true);setError('');
   const {error:e}=await supabase.rpc('dispatch_delivery_route',{p_route_id:routeId});
   if(e)setError(errorText(e)+' Si no estás seguro del resultado, actualizá antes de intentar otra vez.');
@@ -83,18 +84,18 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   setBusy(false);
  }
  async function delivered(orderId:string){
-  if(!supabase||busy||!window.confirm('¿Confirmás que el cliente recibió este pedido? Esto NO registra ningún cobro.'))return;
+  if(!supabase||busy)return;
   setBusy(true);setError('');
   const {error:e}=await supabase.rpc('confirm_delivery',{p_order_id:orderId});
   if(e)setError(errorText(e));else {setNotice('Entrega confirmada. El pago sigue pendiente de registrar.');await load();}
   setBusy(false);
  }
  return <section className="delivery-module">
-  <p className="delivery-warning">Piloto de despacho: preparar una salida solo asigna pedidos. Despachar descuenta el inventario reservado. Entregar NO registra pagos.</p>
+  <p className="delivery-warning">Confirmar salida asigna los pedidos y registra su salida física. Marcar entregado no registra ningún pago.</p>
   {error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<section className="delivery-card">
-   <div className="delivery-card-head"><h2>Preparar salida</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
+   <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Elegí quién sale y marcá los pedidos listos.</p>
    <fieldset className="delivery-drivers"><legend>¿Quién va a repartir?</legend>
     {drivers.map((d,i)=><label className="delivery-driver" key={d.user_id}>
@@ -110,22 +111,23 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
     <b>{money(o.total_cents)}</b>
    </label>)}
    <div className="delivery-summary"><span>{selected.length} pedidos seleccionados</span><strong>{drivers.find(d=>d.user_id===driver)?.display_name||'Elegí repartidor'}</strong></div>
-   <button className="delivery-primary" disabled={busy||!driver||!selected.length} onClick={()=>void prepare()}>{busy?'Guardando…':attempt.current?'Verificar / reintentar misma salida':'Preparar salida'}</button>
+   <button className="delivery-primary" disabled={busy||!driver||!selected.length} onClick={()=>setConfirm({kind:'outing',id:'new'})}>{busy?'Confirmando…':attempt.current?'Verificar misma salida':'Confirmar salida'}</button>
    {attempt.current&&<p className="delivery-subtitle">La última solicitud tiene un resultado incierto. Este botón utiliza el mismo identificador para evitar duplicarla.</p>}
   </section>}
-  {staffRole!=='driver'&&<section className="delivery-card"><h2>Salidas preparadas</h2>
+  {staffRole!=='driver'&&<section className="delivery-card"><h2>Salidas registradas</h2>
    {!routes.length?<p>Todavía no hay salidas.</p>:routes.map(r=>{
     const assigned=assignments.filter(a=>a.route_id===r.id).sort((a,b)=>a.stop_order-b.stop_order);
+     const active=assigned.filter(a=>orderStates[a.order_id]!==undefined && orderStates[a.order_id]!=='cancelled');
+     if(!r.dispatched_at && active.length===0)return null;
     return <div className="delivery-route" key={r.id}><strong>{r.label}</strong><small>{drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor'} · {assigned.length} pedidos · {r.status==='closed'?'Finalizada':r.dispatched_at?'En reparto':'Preparada'}</small>
      {assigned.map((a,i)=><div className="delivery-stop" key={a.order_id}><span>{i+1}. Pedido #{a.order_id.slice(0,8)} · {orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='out_for_delivery'?'En reparto':'Listo'}</span><div><button disabled={busy||!!r.dispatched_at||i===0} aria-label="Subir parada" onClick={()=>void move(r.id,a.order_id,-1)}>↑</button><button disabled={busy||!!r.dispatched_at||i===assigned.length-1} aria-label="Bajar parada" onClick={()=>void move(r.id,a.order_id,1)}>↓</button></div></div>)}
-     {!r.dispatched_at&&r.status==='planning'&&assigned.length>0&&<button className="delivery-primary" disabled={busy} onClick={()=>void dispatch(r.id)}>Confirmar despacho</button>}
+     {!r.dispatched_at&&r.status==='planning'&&assigned.length>0&&<button className="delivery-primary" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:r.id})}>Confirmar despacho</button>}
     </div>;
    })}
   </section>}
   {mine.length>0&&<section className="delivery-card"><h2>Mis entregas asignadas</h2>{mine.map(o=><div className="delivery-route" key={o.order_id}>
    <strong>{o.stop_order}. {o.customer_name}</strong><small>{o.route_label} · {o.delivery_address}</small><small>{o.customer_phone} · {money(o.total_cents)}</small>
    <a target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}>Abrir dirección en Maps</a>
-   {orderStates[o.order_id]==='out_for_delivery'&&<button disabled={busy} onClick={()=>void delivered(o.order_id)}>Confirmar entrega (sin cobro)</button>}
+   {orderStates[o.order_id]==='out_for_delivery'&&<button className="delivery-primary" disabled={busy} onClick={()=>setConfirm({kind:'delivery',id:o.order_id})}>Marcar entregado</button>}
   </div>)}</section>}
  </section>;
-}
