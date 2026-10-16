@@ -15,6 +15,19 @@ const units: Record<Product['unit'],string> = {lb:'lb',unit:'unidad',package:'pa
 const step = (p:Product) => p.unit === 'lb' ? 0.5 : 1;
 const pendingKey = 'im-pending-checkout-v03';
 function readPending(): PendingCheckout|null { try {const v=localStorage.getItem(pendingKey);return v?JSON.parse(v) as PendingCheckout:null;} catch {return null;} }
+function errorMessage(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const v = value as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown; error?: unknown };
+    for (const item of [v.message, v.details, v.hint, v.error, v.code]) {
+      if (typeof item === 'string' && item.trim() && item !== '[object Object]') return item;
+    }
+  }
+  return 'No se pudo determinar el error. Verificá la operación antes de reintentar.';
+}
+function rejectedInventory(message: string): boolean {
+  return /Insufficient available inventory|Product unavailable|Invalid quantity|Invalid sale request/i.test(message);
+}
 function friendlyError(message:string) {
   if (/Insufficient available inventory/i.test(message)) return 'No hay suficiente inventario disponible. Actualizá el catálogo.';
   if (/Product unavailable/i.test(message)) return 'Este producto ya no está disponible.';
@@ -36,6 +49,7 @@ function App() {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [pending,setPending]=useState<PendingCheckout|null>(readPending);
+  const [checkingPending,setCheckingPending]=useState(false);
   const processing=useRef(false);
   const cart=useMemo(()=>lines.map(l=>({line:l,product:products.find(p=>p.id===l.id)})).filter((x):x is {line:Line;product:Product}=>Boolean(x.product)),[lines,products]);
   const totalCents=cart.reduce((s,x)=>s+Math.round(x.line.qty*x.product.priceCents),0);
@@ -63,6 +77,54 @@ function App() {
   useEffect(()=>{void refresh();const timer=setInterval(()=>{if(!document.hidden&&!processing.current)void refresh();},15000);return()=>clearInterval(timer);},[refresh]);
   function add(p:Product){if(p.stock<=0)return;const delta=step(p);const current=lines.find(l=>l.id===p.id)?.qty||0;if(current+delta>p.stock){setNotice('Inventario insuficiente.');return;}setLines(old=>old.some(l=>l.id===p.id)?old.map(l=>l.id===p.id?{...l,qty:Math.round((l.qty+delta)*10000)/10000}:l):[...old,{id:p.id,qty:delta}]);}
   function change(p:Product,delta:number){const current=lines.find(l=>l.id===p.id)?.qty||0;const next=Math.round((current+delta)*10000)/10000;if(next>p.stock){setNotice('Inventario insuficiente.');return;}setLines(old=>next<=0?old.filter(l=>l.id!==p.id):old.map(l=>l.id===p.id?{...l,qty:next}:l));}
+  function clearAttempt(message: string) {
+    localStorage.removeItem(pendingKey);
+    setPending(null);
+    setLines([]);
+    setCash('');
+    setCartOpen(false);
+    setError('');
+    setNotice(message);
+  }
+  async function verifyPending(){
+    if(!supabase || !pending || busy || checkingPending) return;
+    setCheckingPending(true);setError('');setNotice('');
+    try {
+      const saleResult=await supabase.from('sales').select('id,total_cents,status').eq('request_id',pending.requestId).maybeSingle();
+      if(saleResult.error) throw saleResult.error;
+      if(!saleResult.data){
+        setError('No hay una venta registrada con este identificador. Si el intento ya terminó y no se registró un cobro, podés descartarlo después de verificarlo.');
+        return;
+      }
+      const sale=saleResult.data;
+      const payments=await supabase.from('sale_payments').select('request_id,amount_cents,status').eq('sale_id',sale.id);
+      if(payments.error) throw payments.error;
+      const paid=(payments.data||[]).filter(p=>p.status==='received').reduce((sum,p)=>sum+Number(p.amount_cents),0);
+      if(sale.status==='completed' && paid===Number(sale.total_cents)){
+        clearAttempt('Venta y cobro confirmados en Supabase. Mostrador habilitado.');
+        await refresh();
+      }else{
+        const updated={...pending,saleId:sale.id};
+        localStorage.setItem(pendingKey,JSON.stringify(updated));setPending(updated);
+        setError(`La venta existe, pero el cobro confirmado es ${money(paid)} de ${money(Number(sale.total_cents))}. No se liberó el bloqueo para evitar duplicaciones.`);
+      }
+    }catch(e){setError(friendlyError(errorMessage(e)));}
+    finally{setCheckingPending(false);}
+  }
+  async function discardUnregisteredPending(){
+    if(!supabase || !pending || busy || checkingPending) return;
+    setCheckingPending(true);setError('');
+    try {
+      const current=pending;
+      const result=await supabase.from('sales').select('id').eq('request_id',current.requestId).maybeSingle();
+      if(result.error) throw result.error;
+      if(result.data){setError('Esta venta sí existe en Supabase. No se puede descartar; verificá su cobro.');return;}
+      if(!window.confirm('No se encontró la venta en Supabase. Confirmá que no hay un cobro externo asociado y que el intento anterior ya terminó. ¿Descartar el intento local?'))return;
+      clearAttempt('Intento local descartado. No se modificaron ventas ni inventario en Supabase.');
+      await refresh();
+    }catch(e){setError(friendlyError(errorMessage(e)));}
+    finally{setCheckingPending(false);}
+  }
   async function checkout(){
     if(!supabase||busy||processing.current)return;
     if(!pending&&!cart.length)return;
@@ -91,9 +153,15 @@ function App() {
       setNotice(`Venta y cobro registrados. Cambio: ${money(attempt.cashCents-due)}.`);
       await refresh();
     } catch(e) {
-      const message=e instanceof Error?e.message:String(e);
-      if(/Insufficient available inventory|Product unavailable|Invalid quantity|Invalid sale request/i.test(message)&&!attempt.saleId){
-        localStorage.removeItem(pendingKey);setPending(null);await refresh();
+      const message=errorMessage(e);
+      if(rejectedInventory(message)&&!attempt.saleId){
+        const check=await supabase.from('sales').select('id').eq('request_id',attempt.requestId).maybeSingle();
+        if(!check.error && !check.data){
+          localStorage.removeItem(pendingKey);setPending(null);setLines([]);setCash('');setCartOpen(false);
+          setError(friendlyError(message) + ' La venta no se registró. Podés iniciar otra.');
+          await refresh();
+          return;
+        }
       }
       setError(friendlyError(message));
     }
@@ -107,8 +175,8 @@ function App() {
   return <div className="shell"><header className="top"><div className="brand"><span className="mark">IM</span><div><strong>Inmensa Mar</strong><small>Operación</small></div></div><span className="demo">ENTORNO DE PRUEBA</span></header><div className="workspace"><aside className="sidebar"><div className="side-label">OPERACIÓN</div>{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}{label}</button>)}</aside><main className="main">
     <div className="heading heading-actions"><div><h1>{page==='vender'?'Nueva venta':page==='inventario'?'Inventario':page==='resumen'?'Resumen':'Pedidos'}</h1><p>{page==='vender'?'Seleccioná productos y registrá el cobro en Supabase.':page==='inventario'?'Existencias disponibles por variante.':page==='resumen'?'Ventas registradas en la base de datos.':'Módulo pendiente de desarrollo.'}</p></div><button className="refresh-btn" onClick={()=>void refresh()} disabled={busy}><RefreshCw size={16}/> Actualizar</button></div>
     {error&&<div className="error-panel" role="alert">{error}{pending&&<p>Hay una operación pendiente de verificar. No iniciés otra venta hasta resolverla.</p>}</div>}
-    {pending&&!error&&<div className="warning-panel">Hay una venta pendiente de confirmar. Usá «Reintentar cobro pendiente»; no inicies otra operación.</div>}
-    {loading?<p className="empty">Cargando datos de Supabase…</p>:page==='vender'?<div className="pos"><section className="catalog"><div className="search"><Search size={18}/><input aria-label="Buscar productos" placeholder="Buscar producto" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="filters">{categories.map(c=><button key={c} className={category===c?'selected':''} onClick={()=>setCategory(c)}>{c}</button>)}</div><div className="product-list">{filtered.map(p=><div className="product" key={p.id}><div className="product-info"><strong>{p.name}</strong><small>{p.stock} {units[p.unit]} disponibles</small></div><div className="product-action"><b>{money(p.priceCents)}<small>/{units[p.unit]}</small></b><button aria-label={`Agregar ${p.name}`} disabled={busy||!!pending||p.stock<=0} onClick={()=>add(p)}><Plus size={19}/></button></div></div>)}{!filtered.length&&<p className="empty">No hay productos disponibles. Cargá datos de prueba en Supabase.</p>}</div></section><div className="desktop-cart">{cartPanel}</div></div>:page==='inventario'?<div className="table-wrap"><table><thead><tr><th>Producto</th><th>Unidad</th><th>Precio</th><th>Disponible</th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td>{p.name}</td><td>{units[p.unit]}</td><td>{money(p.priceCents)}</td><td>{p.stock}</td></tr>)}</tbody></table></div>:page==='resumen'?<><div className="stats"><div><small>Últimas ventas</small><strong>{sales.length}</strong></div><div><small>Total registrado (últimas 100)</small><strong>{money(sales.reduce((s,x)=>s+Number(x.total_cents),0))}</strong></div></div><div className="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Total</th></tr></thead><tbody>{sales.map(s=><tr key={s.id}><td>{s.id.slice(0,8)}</td><td>{new Date(s.created_at).toLocaleString('es-GT')}</td><td>{money(Number(s.total_cents))}</td></tr>)}</tbody></table>{!sales.length&&<p className="empty">No hay ventas todavía.</p>}</div></>:<div className="placeholder"><ClipboardList size={28}/><strong>Próxima fase</strong><p>Los pedidos online todavía no están habilitados.</p></div>}
+    {pending&&<div className="warning-panel">Hay una operación pendiente. Verificá primero su estado en Supabase. <button type="button" disabled={busy||checkingPending} onClick={()=>void verifyPending()}>{checkingPending?'Verificando…':'Verificar operación pendiente'}</button> <button type="button" disabled={busy||checkingPending} onClick={()=>void discardUnregisteredPending()}>Descartar intento sin venta</button></div>}
+    {loading?<p className="empty">Cargando datos de Supabase…</p>:page==='vender'?<div className="pos"><section className="catalog"><div className="search"><Search size={18}/><input aria-label="Buscar productos" placeholder="Buscar producto" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="filters">{categories.map(c=><button key={c} className={category===c?'selected':''} onClick={()=>setCategory(c)}>{c}</button>)}</div><div className="product-list">{filtered.map(p=><div className="product" key={p.id}><div className="product-info"><strong>{p.name}</strong><small>{p.stock<=0?'Agotado':`${p.stock} ${units[p.unit]} disponibles`}</small></div><div className="product-action"><b>{money(p.priceCents)}<small>/{units[p.unit]}</small></b><button aria-label={`Agregar ${p.name}`} disabled={busy||!!pending||p.stock<=0} onClick={()=>add(p)}><Plus size={19}/></button></div></div>)}{!filtered.length&&<p className="empty">No hay productos disponibles. Cargá datos de prueba en Supabase.</p>}</div></section><div className="desktop-cart">{cartPanel}</div></div>:page==='inventario'?<div className="table-wrap"><table><thead><tr><th>Producto</th><th>Unidad</th><th>Precio</th><th>Disponible</th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td>{p.name}</td><td>{units[p.unit]}</td><td>{money(p.priceCents)}</td><td>{p.stock}</td></tr>)}</tbody></table></div>:page==='resumen'?<><div className="stats"><div><small>Últimas ventas</small><strong>{sales.length}</strong></div><div><small>Total registrado (últimas 100)</small><strong>{money(sales.reduce((s,x)=>s+Number(x.total_cents),0))}</strong></div></div><div className="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Total</th></tr></thead><tbody>{sales.map(s=><tr key={s.id}><td>{s.id.slice(0,8)}</td><td>{new Date(s.created_at).toLocaleString('es-GT')}</td><td>{money(Number(s.total_cents))}</td></tr>)}</tbody></table>{!sales.length&&<p className="empty">No hay ventas todavía.</p>}</div></>:<div className="placeholder"><ClipboardList size={28}/><strong>Próxima fase</strong><p>Los pedidos online todavía no están habilitados.</p></div>}
     </main></div>{page==='vender'&&(lines.length>0||pending)&&<button className="mobile-cart-trigger" onClick={()=>setCartOpen(true)}><span>{pending?'Cobro pendiente':`Venta actual · ${lines.length} productos`}</span><strong>{money(totalCents)} →</strong></button>}{cartOpen&&page==='vender'&&<div className="drawer-backdrop" onClick={()=>setCartOpen(false)}><div className="drawer" onClick={e=>e.stopPropagation()}>{cartPanel}</div></div>}<nav className="bottom-nav">{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}<span>{label}</span></button>)}</nav>{notice&&<div className="notice" role="status"><span>{notice}</span><button aria-label="Cerrar aviso" onClick={()=>setNotice('')}><X size={16}/></button></div>}</div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthGate><App/></AuthGate></React.StrictMode>);
