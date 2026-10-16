@@ -130,4 +130,21 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    <a target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}>Abrir dirección en Maps</a>
    {orderStates[o.order_id]==='out_for_delivery'&&<button className="delivery-primary" disabled={busy} onClick={()=>setConfirm({kind:'delivery',id:o.order_id})}>Marcar entregado</button>}
   </div>)}</section>}
+
+  {confirm&&<div className="delivery-confirm-backdrop" role="presentation">
+   <div className="delivery-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delivery-confirm-title">
+    <h3 id="delivery-confirm-title">{confirm.kind==='delivery'?'¿Marcar pedido como entregado?':'¿Confirmar salida?'}</h3>
+    <p>{confirm.kind==='delivery'?'Confirmá que el cliente recibió el pedido. Esto no registra ningún cobro.':'Confirmá que los productos salieron del local. Esta acción descuenta el inventario reservado.'}</p>
+    <div className="delivery-confirm-actions">
+     <button type="button" disabled={busy} onClick={()=>setConfirm(null)}>Volver</button>
+     <button type="button" className="delivery-primary" disabled={busy} onClick={()=>{
+      const action=confirm;setConfirm(null);
+      if(action.kind==='delivery')void delivered(action.id);
+      else if(action.id==='new')void prepare();
+      else void dispatch(action.id);
+     }}>{busy?'Procesando…':'Sí, confirmar'}</button>
+    </div>
+   </div>
+  </div>}
  </section>;
+}
