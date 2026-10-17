@@ -38,11 +38,32 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [confirm,setConfirm]=useState<{kind:'outing'|'delivery';id:string}|null>(null);
  const [error,setError]=useState('');const [notice,setNotice]=useState('');
  const attempt=useRef<{requestId:string;driverId:string;orderIds:string[]}|null>(null);
- const load=useCallback(async()=>{
+ const load=useCallback(async(forceSessionRefresh=false)=>{
   if(!supabase)return;
+  // The browser can keep an old access token while a driver remains signed in.
+  // Refresh on explicit request; otherwise let Supabase manage its normal session lifecycle.
   if(staffRole==='driver'){
-   const [result,payments]=await Promise.all([supabase.rpc('my_delivery_orders_v2'),supabase.from('delivery_payment_events').select('order_id,event_kind,method,amount_cents,verified_at')]);
-   if(result.error||payments.error)setError(errorText(result.error||payments.error));else {setMine(result.data||[]);setPaymentEvents(payments.data||[]);setOrderStates(Object.fromEntries((result.data||[]).map((x:DriverOrder)=>[x.order_id,x.order_status])));setError('');}
+   if(forceSessionRefresh){
+    const {error:refreshError}=await supabase.auth.refreshSession();
+    if(refreshError){setError(`No se pudo renovar la sesión: ${errorText(refreshError)}. Revisá tu conexión.`);return;}
+   }
+   const {data:sessionData,error:sessionError}=await supabase.auth.getSession();
+   if(sessionError||!sessionData.session){setError('La sesión no está disponible. Volvé a iniciar sesión.');return;}
+   let result=await supabase.rpc('my_delivery_orders_v2');
+   if(result.error && /jwt|expired|unauthoriz|permission|token/i.test(errorText(result.error))){
+    const refreshed=await supabase.auth.refreshSession();
+    if(refreshed.error){setError(`No se pudo renovar la sesión: ${errorText(refreshed.error)}`);return;}
+    result=await supabase.rpc('my_delivery_orders_v2');
+   }
+   if(result.error){setError(`No se pudieron actualizar las entregas: ${errorText(result.error)}`);return;}
+   // Never hide an assigned delivery because the secondary payment lookup fails.
+   const assigned=(result.data||[]) as DriverOrder[];
+   setMine(assigned);
+   setOrderStates(Object.fromEntries(assigned.map(x=>[x.order_id,x.order_status])));
+   const payments=await supabase.from('delivery_payment_events').select('order_id,event_kind,method,amount_cents,verified_at');
+   if(payments.error){setError(`Entregas actualizadas, pero falló la consulta de pagos: ${errorText(payments.error)}`);return;}
+   setPaymentEvents(payments.data||[]);
+   setError('');
    return;
   }
   const [d,r,o,a,m,p]=await Promise.all([
@@ -60,7 +81,15 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   if(!m.error)setMine(m.data||[]);
   setError('');
  },[staffRole]);
- useEffect(()=>{void load();},[load]);
+ useEffect(()=>{
+  void load();
+  if(staffRole!=='driver')return;
+  const onFocus=()=>{if(document.visibilityState==='visible')void load();};
+  window.addEventListener('focus',onFocus);
+  document.addEventListener('visibilitychange',onFocus);
+  const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void load();},30000);
+  return()=>{window.removeEventListener('focus',onFocus);document.removeEventListener('visibilitychange',onFocus);window.clearInterval(timer);};
+ },[load,staffRole]);
  const available=orders.filter(o=>o.status==='ready'&&!assignments.some(a=>a.order_id===o.id));
  const selected=chosen.filter(id=>available.some(o=>o.id===id));
  async function prepare(){
@@ -132,7 +161,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>En reparto</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
   {staffRole!=='driver'&&view==='active'&&<section className="delivery-card">
-   <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
+   <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load(staffRole==='driver')} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Elegí quién sale y marcá los pedidos listos.</p>
    <fieldset className="delivery-drivers"><legend>¿Quién va a repartir?</legend>
     {drivers.map((d,i)=><label className="delivery-driver" key={d.user_id}>
@@ -161,7 +190,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
     </div>;
    })}
   </section>}
-  {staffRole!=='driver'&&view==='history'&&<section className="delivery-card"><div className="delivery-card-head"><h2>Historial de reparto</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
+  {staffRole!=='driver'&&view==='history'&&<section className="delivery-card"><div className="delivery-card-head"><h2>Historial de reparto</h2><button onClick={()=>void load(staffRole==='driver')} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Consultá salidas cerradas por fecha y repartidor. Se muestran hasta las 100 salidas más recientes cargadas; los filtros no son un reporte completo de períodos anteriores.</p>
    <div className="delivery-filters">
     <label>Desde<input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></label>
