@@ -161,7 +161,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>En reparto</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
   {staffRole!=='driver'&&view==='active'&&<section className="delivery-card">
-   <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load(staffRole==='driver')} disabled={busy}>Actualizar</button></div>
+   <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Elegí quién sale y marcá los pedidos listos.</p>
    <fieldset className="delivery-drivers"><legend>¿Quién va a repartir?</legend>
     {drivers.map((d,i)=><label className="delivery-driver" key={d.user_id}>
@@ -190,7 +190,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
     </div>;
    })}
   </section>}
-  {staffRole!=='driver'&&view==='history'&&<section className="delivery-card"><div className="delivery-card-head"><h2>Historial de reparto</h2><button onClick={()=>void load(staffRole==='driver')} disabled={busy}>Actualizar</button></div>
+  {staffRole!=='driver'&&view==='history'&&<section className="delivery-card"><div className="delivery-card-head"><h2>Historial de reparto</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Consultá salidas cerradas por fecha y repartidor. Se muestran hasta las 100 salidas más recientes cargadas; los filtros no son un reporte completo de períodos anteriores.</p>
    <div className="delivery-filters">
     <label>Desde<input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></label>
