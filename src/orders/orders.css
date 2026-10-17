@@ -32,3 +32,7 @@
 .op-payment-actions{display:flex;justify-content:flex-end;gap:10px}.op-payment-actions button{min-height:44px}
 .op-payment-warning{color:#9a4a1c;font-size:13px}
 @media(max-width:480px){.op-payment-dialog{padding:18px}.op-payment-actions{display:grid;grid-template-columns:1fr 1fr}}
+
+/* Core 0.6A transfer incident notes */
+.op-issue-label{font-weight:600;font-size:14px}
+.op-payment-dialog textarea{width:100%;box-sizing:border-box;border:1px solid #b8cdd0;border-radius:8px;padding:12px;min-height:92px;font:inherit;resize:vertical}

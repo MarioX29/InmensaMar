@@ -9,6 +9,7 @@ type OrderLine = {order_id:string;variant_id:string;quantity:number;unit_price_c
 type VariantLabel = {id:string;name:string;base_unit:string};
 type PaymentEvent = {order_id:string;event_kind:'pending'|'payment';method:string;amount_cents:number;verified_at:string|null};
 type PaymentMethod = 'cash'|'transfer_reported';
+type TransferIssueEvent = {order_id:string;action:'reported'|'resolved';reason:string;created_at:string;event_seq:number};
 const activeStatuses = ['received','accepted','preparing','ready','out_for_delivery'];
 const cash=(n:number)=>`Q ${(n/100).toFixed(2)}`;
 const units:Record<Product['unit'],string>={lb:'lb',unit:'unidad',package:'paquete'};
@@ -17,12 +18,16 @@ const message=(error:unknown)=>{
   return 'No se pudo completar la operación.';
 };
 
-export function OrdersPanel(){
+export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|'driver'}){
   const [view,setView]=useState<'customer'|'counter'>('counter');
   const [products,setProducts]=useState<Product[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
   const [orderLines,setOrderLines]=useState<OrderLine[]>([]);
   const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
+  const [transferIssues,setTransferIssues]=useState<TransferIssueEvent[]>([]);
+  const [issueOrderId,setIssueOrderId]=useState<string|null>(null);
+  const [issueAction,setIssueAction]=useState<'reported'|'resolved'>('reported');
+  const [issueReason,setIssueReason]=useState('');
   const [payOrderId,setPayOrderId]=useState<string|null>(null);
   const [payMethod,setPayMethod]=useState<PaymentMethod>('cash');
   const [payTendered,setPayTendered]=useState('');
@@ -71,8 +76,13 @@ export function OrdersPanel(){
       setOrderLines(lines);
       setVariantLabels(Object.fromEntries(labels.map(v=>[v.id,v])));
     }else{setOrderLines([]);setVariantLabels({});}
+    if(staffRole==='admin'){
+      const issues=await supabase.from('delivery_transfer_issue_events').select('order_id,action,reason,created_at,event_seq').order('event_seq',{ascending:false}).limit(1000);
+      if(issues.error){setError('No se pudieron consultar las incidencias: '+message(issues.error));return;}
+      setTransferIssues((issues.data||[]) as TransferIssueEvent[]);
+    }
     setOrders(fetchedOrders);setPaymentEvents((paymentResult.data||[]) as PaymentEvent[]);setError('');
-  },[]);
+  },[staffRole]);
   useEffect(()=>{void load();},[load]);
   function adjust(p:Product,delta:number){
     setItems(old=>{
@@ -109,11 +119,25 @@ export function OrdersPanel(){
     await load();setBusy(false);
   }
   const paymentFor=(id:string)=>paymentEvents.find(e=>e.order_id===id&&e.event_kind==='payment');
+  const issueFor=(id:string)=>transferIssues.find(e=>e.order_id===id);
+  function openIssue(id:string,action:'reported'|'resolved'){
+    setIssueOrderId(id);setIssueAction(action);setIssueReason('');setError('');
+  }
+  async function saveIssue(){
+    if(!supabase||busy||!issueOrderId||issueReason.trim().length<3)return;
+    setBusy(true);setError('');setNotice('');
+    const {error:failure}=await supabase.rpc('set_delivery_transfer_issue',{
+      p_order_id:issueOrderId,p_action:issueAction,p_reason:issueReason.trim()
+    });
+    if(failure){setError(message(failure));}
+    else {setIssueOrderId(null);setIssueReason('');setNotice(issueAction==='reported'?'Problema registrado. La entrega no cambió.':'Incidencia resuelta.');await load();}
+    setBusy(false);
+  }
   const pendingFor=(id:string)=>paymentEvents.some(e=>e.order_id===id&&e.event_kind==='pending');
   function paymentLabel(id:string){
     const payment=paymentFor(id);
     if(payment?.method==='cash')return 'Cobrado en efectivo';
-    if(payment?.method==='transfer_reported')return payment.verified_at?'Transferencia verificada':'Transferencia por verificar';
+    if(payment?.method==='transfer_reported')return issueFor(id)?.action==='reported'?'Transferencia con problema':payment.verified_at?'Transferencia verificada':'Transferencia reportada';
     if(pendingFor(id))return 'Pago pendiente';
     return 'Sin registro de cobro';
   }
@@ -183,10 +207,22 @@ export function OrdersPanel(){
         {o.status==='preparing'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'ready')}>Marcar listo</button>}
         {['received','accepted','preparing','ready'].includes(o.status)&&<button className="op-outline" disabled={busy} onClick={()=>{if(window.confirm('¿Cancelar este pedido? Se liberarán las reservas.'))void act(o.id,'cancel');}}>Cancelar pedido</button>}
         {o.status==='delivered'&&<div className="op-payment-status"><span>Estado del pago</span><strong>{paymentLabel(o.id)}</strong>{pendingFor(o.id)&&!paymentFor(o.id)&&<span>Saldo por cobrar: {cash(Number(o.total_cents))}</span>}</div>}
+        {staffRole==='admin'&&o.status==='delivered'&&paymentFor(o.id)?.method==='transfer_reported'&&!paymentFor(o.id)?.verified_at&&(
+          issueFor(o.id)?.action==='reported'
+          ? <button type="button" className="op-outline" disabled={busy} onClick={()=>openIssue(o.id,'resolved')}>Resolver problema</button>
+          : <button type="button" className="op-outline" disabled={busy} onClick={()=>openIssue(o.id,'reported')}>Reportar problema</button>
+        )}
         {o.status==='delivered'&&pendingFor(o.id)&&!paymentFor(o.id)&&<button type="button" className="op-primary" disabled={busy||!!paymentAttempt} onClick={()=>openPayment(o.id)}>Registrar cobro</button>}
         {o.status==='ready'&&<small>Listo para asignar a reparto.</small>}
       </div></article>)}</section></>}
     </div>
+    {issueOrderId&&staffRole==='admin'&&<div className="op-payment-backdrop"><div className="op-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="op-issue-title">
+      <h2 id="op-issue-title">{issueAction==='reported'?'Reportar problema de transferencia':'Resolver problema de transferencia'}</h2>
+      <p>Pedido #{issueOrderId.slice(0,8)}. El pedido seguirá entregado y el pago original se conservará.</p>
+      <label className="op-issue-label" htmlFor="op-issue-reason">{issueAction==='reported'?'¿Qué ocurrió?':'¿Cómo se resolvió?'}</label>
+      <textarea id="op-issue-reason" rows={3} maxLength={500} value={issueReason} disabled={busy} onChange={e=>setIssueReason(e.target.value)} placeholder={issueAction==='reported'?'Ej. No aparece el depósito en la cuenta':'Ej. Cliente envió datos correctos y se aclaró el pago'}/>
+      <div className="op-payment-actions"><button type="button" className="op-outline" disabled={busy} onClick={()=>setIssueOrderId(null)}>Volver</button><button type="button" className="op-primary" disabled={busy||issueReason.trim().length<3} onClick={()=>void saveIssue()}>{busy?'Guardando…':issueAction==='reported'?'Reportar problema':'Resolver problema'}</button></div>
+    </div></div>}
     {payOrderId&&(()=>{
       const order=orders.find(o=>o.id===payOrderId);
       if(!order)return null;
