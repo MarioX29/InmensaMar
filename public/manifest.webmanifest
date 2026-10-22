@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Inmensa Mar - Operacion",
+  "short_name": "Inmensa Mar",
+  "description": "Ventas, pedidos y reparto de Inmensa Mar",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F7F5EF",
+  "theme_color": "#142F43",
+  "lang": "es-GT",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
