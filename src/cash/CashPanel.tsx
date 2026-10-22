@@ -3,10 +3,13 @@ import {supabase} from '../lib/supabase';
 import './cash.css';
 type Position={user_id:string;display_name:string;collected_cents:number;handed_off_cents:number;remaining_cents:number};
 type Overview={cash_cents:number;transfer_reported_cents:number;pending_cents:number;open_issues:number;handed_off_cents:number};
+type CashDay={id:string;business_date:string;status:'open'|'closed';opening_float_cents:number;opened_at:string};
 type Handoff={id:string;created_at:string;amount_cents:number;from_user_id:string;to_user_id:string;note:string|null};
 const money=(v:number)=>`Q ${(Number(v)/100).toFixed(2)}`;
 const message=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'Error inesperado';
 export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
+ const [day,setDay]=useState<CashDay|null>(null);
+ const [dayError,setDayError]=useState('');
  const [overview,setOverview]=useState<Overview|null>(null);
  const [positions,setPositions]=useState<Position[]>([]);
  const [handoffs,setHandoffs]=useState<Handoff[]>([]);
@@ -15,10 +18,12 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const attempt=useRef<{requestId:string;source:string;cents:number;note:string}|null>(null);
  const load=useCallback(async()=>{
   if(!supabase||staffRole!=='admin')return;
-  const [o,p,h]=await Promise.all([
+  const [o,p,h,d]=await Promise.all([
    supabase.rpc('delivery_cash_overview'),supabase.rpc('delivery_cash_positions'),
-   supabase.from('delivery_cash_handoffs').select('id,created_at,amount_cents,from_user_id,to_user_id,note').order('created_at',{ascending:false}).limit(50)
+   supabase.from('delivery_cash_handoffs').select('id,created_at,amount_cents,from_user_id,to_user_id,note').order('created_at',{ascending:false}).limit(50),
+   supabase.from('cash_days').select('id,business_date,status,opening_float_cents,opened_at').order('opened_at',{ascending:false}).limit(1)
   ]);
+  if(d.error){setDayError(message(d.error));}else{setDay((d.data?.[0] as CashDay|undefined)||null);setDayError('');}
   const issue=o.error||p.error||h.error;
   if(issue){setError(message(issue));return;}
   setOverview((o.data||[])[0]||null);setPositions(p.data||[]);setHandoffs(h.data||[]);setError('');
@@ -60,6 +65,14 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  if(staffRole!=='admin')return <section className="cash-panel">Acceso restringido a administradores.</section>;
  return <section className="cash-panel">
   <div className="cash-head"><div><h2>Caja</h2><p>Control de efectivo de entregas. No incluye ventas de mostrador ni gastos.</p></div><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
+  <div className="cash-card" aria-label="Jornada de Caja">
+   <h3>Jornada de Caja</h3>
+   {dayError?<p className="cash-error" role="alert">No se pudo consultar la apertura: {dayError}</p>:day?<>
+    <p>{day.status==='open'?'Caja abierta':'Caja cerrada'} · {day.business_date}</p>
+    <div className="cash-stats"><article><small>Sencillo inicial registrado</small><strong>{money(day.opening_float_cents)}</strong></article></div>
+    <small>El sencillo inicial no es una venta. Aún no se incluye en los totales de reparto de abajo.</small>
+   </>:<p>No hay jornadas de Caja registradas.</p>}
+  </div>
   {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
   <div className="cash-stats">
    <article><small>Efectivo cobrado en reparto</small><strong>{money(overview?.cash_cents||0)}</strong></article>
