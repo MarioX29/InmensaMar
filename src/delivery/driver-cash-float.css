@@ -1,0 +1,6 @@
+.driver-float { margin-bottom: 16px; }
+.driver-float-label { display: block; font-weight: 700; margin: 12px 0 8px; }
+.driver-float input { width: 100%; min-height: 48px; box-sizing: border-box; padding: 10px 12px; font: inherit; border: 1px solid #a9bec3; border-radius: 8px; margin-bottom: 12px; }
+.driver-float .delivery-primary { min-height: 48px; width: 100%; }
+.driver-float-total { background: #f0f5f4; border: 1px solid #d4e4e2; border-radius: 9px; padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+.driver-float-total strong { font-size: 1.65rem; color: #142f43; }
