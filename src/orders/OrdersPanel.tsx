@@ -83,7 +83,20 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
     }
     setOrders(fetchedOrders);setPaymentEvents((paymentResult.data||[]) as PaymentEvent[]);setError('');
   },[staffRole]);
-  useEffect(()=>{void load();},[load]);
+  useEffect(()=>{
+    void load();
+    // Keep the counter view current when delivery staff change order statuses.
+    // Polling works without requiring changes to the Supabase Realtime publication.
+    const refresh=()=>{if(document.visibilityState==='visible')void load();};
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    const timer=window.setInterval(refresh,15000);
+    return()=>{
+      window.removeEventListener('focus',refresh);
+      document.removeEventListener('visibilitychange',refresh);
+      window.clearInterval(timer);
+    };
+  },[load]);
   function adjust(p:Product,delta:number){
     setItems(old=>{
       const current=old.find(x=>x.variant_id===p.id)?.quantity||0;
