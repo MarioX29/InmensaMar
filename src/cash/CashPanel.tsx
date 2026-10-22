@@ -26,13 +26,13 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  useEffect(()=>{void load();void supabase?.auth.getUser().then(({data})=>setCurrentUser(data.user?.id||''));},[load]);
  useEffect(()=>{
   if(staffRole!=='admin')return;
-  const refresh=()=>{if(document.visibilityState==='visible'&&!busy)void load();};
+  const refresh=()=>{if(document.visibilityState==='visible')void load();};
   const interval=window.setInterval(refresh,15000);
   const onVisible=()=>{if(document.visibilityState==='visible')refresh();};
   document.addEventListener('visibilitychange',onVisible);
   window.addEventListener('focus',refresh);
   return ()=>{window.clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('focus',refresh);};
- },[load,staffRole,busy]);
+ },[load,staffRole]);
  const selected=positions.find(x=>x.user_id===source);
  const cents=amount.trim()&&/^\d+(\.\d{1,2})?$/.test(amount)?Math.round(Number(amount)*100):0;
  const canSubmit=!!selected&&cents>0&&cents<=Number(selected.remaining_cents)&&!busy;
