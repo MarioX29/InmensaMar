@@ -189,3 +189,11 @@ function App({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
     </main></div>{page==='vender'&&(lines.length>0||pending)&&<button className="mobile-cart-trigger" onClick={()=>setCartOpen(true)}><span>{pending?'Cobro pendiente':`Venta actual · ${lines.length} productos`}</span><strong>{money(totalCents)} →</strong></button>}{cartOpen&&page==='vender'&&<div className="drawer-backdrop" onClick={()=>setCartOpen(false)}><div className="drawer" onClick={e=>e.stopPropagation()}>{cartPanel}</div></div>}<nav className="bottom-nav">{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}<span>{label}</span></button>)}</nav>{notice&&<div className="notice" role="status"><span>{notice}</span><button aria-label="Cerrar aviso" onClick={()=>setNotice('')}><X size={16}/></button></div>}</div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthGate><App/></AuthGate></React.StrictMode>);
+// Register a minimal service worker. Push permissions are added in Core 0.7B.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+      console.warn('No se pudo registrar la aplicación instalable:', error);
+    });
+  });
+}
