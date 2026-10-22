@@ -12,7 +12,6 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const [handoffs,setHandoffs]=useState<Handoff[]>([]);
  const [currentUser,setCurrentUser]=useState('');const [source,setSource]=useState('');const [amount,setAmount]=useState('');const [note,setNote]=useState('');
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
- const [refreshDebug,setRefreshDebug]=useState('Esperando primer ciclo automático');
  const attempt=useRef<{requestId:string;source:string;cents:number;note:string}|null>(null);
  const load=useCallback(async()=>{
   if(!supabase||staffRole!=='admin')return;
@@ -27,18 +26,15 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  useEffect(()=>{void load();void supabase?.auth.getUser().then(({data})=>setCurrentUser(data.user?.id||''));},[load]);
  useEffect(()=>{
   if(staffRole!=='admin')return;
-  console.info('[Caja QA] intervalo instalado', {staffRole});
   const refresh=()=>{
    const visible=document.visibilityState==='visible';
-   console.info('[Caja QA] intervalo ejecutado', {visible, time:new Date().toLocaleTimeString()});
-   setRefreshDebug(visible?'Consulta automática: '+new Date().toLocaleTimeString():'Pausado: pestaña oculta');
    if(visible)void load();
   };
   const interval=window.setInterval(refresh,15000);
   const onVisible=()=>{if(document.visibilityState==='visible')refresh();};
   document.addEventListener('visibilitychange',onVisible);
   window.addEventListener('focus',refresh);
-  return ()=>{console.info('[Caja QA] intervalo desmontado');window.clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('focus',refresh);};
+  return ()=>{window.clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('focus',refresh);};
  },[load,staffRole]);
  const selected=positions.find(x=>x.user_id===source);
  const cents=amount.trim()&&/^\d+(\.\d{1,2})?$/.test(amount)?Math.round(Number(amount)*100):0;
@@ -63,7 +59,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  }
  if(staffRole!=='admin')return <section className="cash-panel">Acceso restringido a administradores.</section>;
  return <section className="cash-panel">
-  <div className="cash-head"><div><h2>Caja</h2><p>Control de efectivo de entregas. No incluye ventas de mostrador ni gastos.</p></div><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div><p style={{fontSize:12,color:'#586b72',margin:'4px 0 12px'}}>Diagnóstico QA: {refreshDebug}</p>
+  <div className="cash-head"><div><h2>Caja</h2><p>Control de efectivo de entregas. No incluye ventas de mostrador ni gastos.</p></div><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
   {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
   <div className="cash-stats">
    <article><small>Efectivo cobrado en reparto</small><strong>{money(overview?.cash_cents||0)}</strong></article>
