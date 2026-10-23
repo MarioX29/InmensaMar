@@ -351,6 +351,26 @@ export async function onRequestPost({ request, env }) {
       } else {
         throw Error('Unsupported event');
       }
+      // Check the recipient's current preferences, including events queued before an opt-out.
+      const prefUrl = new URL(`${base}/rest/v1/push_preferences`);
+      prefUrl.searchParams.set('select', 'new_orders,deliveries');
+      prefUrl.searchParams.set('user_id', `eq.${event.recipient_user_id}`);
+      prefUrl.searchParams.set('limit', '1');
+      const prefResponse = await supabaseCall(base, key, prefUrl.pathname + prefUrl.search);
+      if (!prefResponse.ok) throw Error(`Preference query ${prefResponse.status}`);
+      const prefs = await prefResponse.json();
+      const optedOut = event.event_type === 'customer_order_created'
+        ? prefs[0]?.new_orders === false
+        : prefs[0]?.deliveries === false;
+      if (optedOut) {
+        // Mark as consumed so it is not retried. 'sent' here means processed,
+        // not that a push was delivered; no push is sent for opted-out events.
+        const completed = await supabaseCall(base, key, '/rest/v1/rpc/complete_push_event', {
+          method: 'POST', body: JSON.stringify({ p_event_id: event.id, p_claim_token: event.claim_token, p_success: true, p_error: null })
+        });
+        if (!completed.ok) console.error('Push opt-out completion failed', { status: completed.status });
+        continue;
+      }
       const subscriptionUrl = new URL(`${base}/rest/v1/push_subscriptions`);
       subscriptionUrl.searchParams.set('select', 'endpoint,p256dh,auth_key');
       subscriptionUrl.searchParams.set('user_id', `eq.${event.recipient_user_id}`);
