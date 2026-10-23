@@ -6,6 +6,8 @@ type Product = { id:string; name:string; unit:'lb'|'unit'|'package'; price_cents
 type Order = {id:string;created_at:string;customer_name:string;customer_phone:string;delivery_address:string;notes:string;status:string;total_cents:number};
 type Item = {variant_id:string;quantity:number};
 type OrderLine = {order_id:string;variant_id:string;quantity:number;unit_price_cents:number;line_total_cents:number};
+type Driver = {user_id:string;display_name:string};
+type Assignment = {order_id:string;route_id:string};
 type VariantLabel = {id:string;name:string;base_unit:string};
 type PaymentEvent = {order_id:string;event_kind:'pending'|'payment';method:string;amount_cents:number;verified_at:string|null};
 type PaymentMethod = 'cash'|'transfer_reported';
@@ -22,6 +24,11 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
   const [view,setView]=useState<'customer'|'counter'>('counter');
   const [products,setProducts]=useState<Product[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
+  const [drivers,setDrivers]=useState<Driver[]>([]);
+  const [assignments,setAssignments]=useState<Assignment[]>([]);
+  const [chosen,setChosen]=useState<string[]>([]);
+  const [driverId,setDriverId]=useState('');
+  const [dispatchAttempt,setDispatchAttempt]=useState<{requestId:string;driverId:string;orderIds:string[]}|null>(null);
   const [orderLines,setOrderLines]=useState<OrderLine[]>([]);
   const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
   const [transferIssues,setTransferIssues]=useState<TransferIssueEvent[]>([]);
@@ -81,6 +88,15 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
       if(issues.error){setError('No se pudieron consultar las incidencias: '+message(issues.error));return;}
       setTransferIssues((issues.data||[]) as TransferIssueEvent[]);
     }
+    if(staffRole!=='driver'){
+      const [driverResult,assignmentResult]=await Promise.all([
+        supabase.from('staff_profiles').select('user_id,display_name').in('role',['driver','admin']).eq('active',true),
+        supabase.from('delivery_assignments').select('order_id,route_id').limit(1000)
+      ]);
+      if(driverResult.error||assignmentResult.error){setError('No se pudieron consultar las asignaciones: '+message(driverResult.error||assignmentResult.error));return;}
+      setDrivers((driverResult.data||[]) as Driver[]);
+      setAssignments((assignmentResult.data||[]) as Assignment[]);
+    }
     setOrders(fetchedOrders);setPaymentEvents((paymentResult.data||[]) as PaymentEvent[]);setError('');
   },[staffRole]);
   useEffect(()=>{
@@ -130,6 +146,27 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
     const {error:failure}=await supabase.rpc(rpc,args);
     if(failure)setError(message(failure));else setNotice(action==='accept'?'Pedido aceptado y en preparación. Inventario reservado.':action==='cancel'?'Pedido cancelado. Reservas liberadas.':action==='prepare'?'Pedido en preparación.':'Pedido listo para entregar.');
     await load();setBusy(false);
+  }
+  const readyToDispatch=orders.filter(o=>o.status==='ready'&&!assignments.some(a=>a.order_id===o.id));
+  const selectedForDispatch=chosen.filter(id=>readyToDispatch.some(o=>o.id===id));
+  async function sendToDelivery(){
+    if(!supabase||busy||!driverId||!selectedForDispatch.length)return;
+    const ids=[...selectedForDispatch].sort();
+    if(dispatchAttempt&&(dispatchAttempt.driverId!==driverId||JSON.stringify(dispatchAttempt.orderIds)!==JSON.stringify(ids))){
+      setError('Hay un envío anterior por verificar. No cambiés los pedidos ni el repartidor antes de resolverlo.');return;
+    }
+    const attempt=dispatchAttempt||{requestId:crypto.randomUUID(),driverId,orderIds:ids};
+    setDispatchAttempt(attempt);setBusy(true);setError('');setNotice('');
+    try{
+      const {data,error:failure}=await supabase.rpc('prepare_and_dispatch_outing',{
+        p_request_id:attempt.requestId,p_driver_id:attempt.driverId,p_order_ids:attempt.orderIds
+      });
+      if(failure)throw failure;
+      setDispatchAttempt(null);setChosen([]);
+      setNotice(`Salida confirmada (${String(data).slice(0,8)}). ${ids.length} pedidos enviados a reparto.`);
+      await load();
+    }catch(e){setError(message(e)+' Si el resultado es incierto, revisá Reparto antes de reintentar. Se conserva el identificador de solicitud.');}
+    finally{setBusy(false);}
   }
   const paymentFor=(id:string)=>paymentEvents.find(e=>e.order_id===id&&e.event_kind==='payment');
   const issueFor=(id:string)=>transferIssues.find(e=>e.order_id===id);
@@ -201,7 +238,14 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
       :<><div className="op-filter-tabs" role="group" aria-label="Filtrar pedidos">
         <button className={orderFilter==='active'?'on':''} onClick={()=>setOrderFilter('active')}>Activos ({activeOrders.length})</button>
         <button className={orderFilter==='history'?'on':''} onClick={()=>setOrderFilter('history')}>Historial ({historyOrders.length})</button>
-      </div><section className="op-orders">{visibleOrders.length===0?<p className="op-empty">{orderFilter==='active'?'No hay pedidos pendientes.':'No hay pedidos en el historial reciente.'}</p>:visibleOrders.map(o=><article className="op-order" key={o.id}><div className="op-orderhead"><strong>#{o.id.slice(0,8)} · {o.customer_name}</strong><span>{({received:'Recibido',accepted:'Aceptado',preparing:'En preparación',ready:'Listo',out_for_delivery:'En reparto',delivered:'Entregado',cancelled:'Cancelado'} as Record<string,string>)[o.status]||o.status}</span></div><p>{o.customer_phone} · {o.delivery_address}</p>
+      </div>{orderFilter==='active'&&staffRole!=='driver'&&readyToDispatch.length>0&&<section className="op-dispatch-box" aria-label="Enviar pedidos listos a reparto">
+        <div><strong>Enviar pedidos a reparto</strong><p>Seleccioná los pedidos listos y elegí quién los lleva. Al confirmar, salen del local.</p></div>
+        <div className="op-dispatch-options">
+          <label>Repartidor<select value={driverId} disabled={busy||!!dispatchAttempt} onChange={e=>setDriverId(e.target.value)}><option value="">Elegí repartidor</option>{drivers.map(d=><option key={d.user_id} value={d.user_id}>{d.display_name}</option>)}</select></label>
+          <div className="op-dispatch-actions"><span>{selectedForDispatch.length} seleccionados</span><button className="op-primary" type="button" disabled={busy||!driverId||!selectedForDispatch.length} onClick={()=>void sendToDelivery()}>{busy?'Enviando…':`Enviar ${selectedForDispatch.length} a reparto`}</button></div>
+        </div>
+        {dispatchAttempt&&<small className="op-dispatch-note">Si el envío anterior falló o quedó incierto, verificá Reparto antes de volver a intentar. No cambiés la selección.</small>}
+      </section>}<section className="op-orders">{visibleOrders.length===0?<p className="op-empty">{orderFilter==='active'?'No hay pedidos pendientes.':'No hay pedidos en el historial reciente.'}</p>:visibleOrders.map(o=><article className="op-order" key={o.id}><div className="op-orderhead"><strong>{orderFilter==='active'&&staffRole!=='driver'&&o.status==='ready'&&!assignments.some(a=>a.order_id===o.id)&&<label className="op-dispatch-check"><input type="checkbox" aria-label={`Seleccionar pedido ${o.id.slice(0,8)}`} checked={selectedForDispatch.includes(o.id)} disabled={busy||!!dispatchAttempt} onChange={e=>setChosen(prev=>e.target.checked?[...prev,o.id]:prev.filter(id=>id!==o.id))}/></label>}#{o.id.slice(0,8)} · {o.customer_name}</strong><span>{({received:'Recibido',accepted:'Aceptado',preparing:'En preparación',ready:'Listo',out_for_delivery:'En reparto',delivered:'Entregado',cancelled:'Cancelado'} as Record<string,string>)[o.status]||o.status}</span></div><p>{o.customer_phone} · {o.delivery_address}</p>
         <div className="op-order-items"><strong>Productos solicitados</strong>
           {orderLines.filter(l=>l.order_id===o.id).length===0
             ? <p className="op-item-missing">No se encontró el detalle de este pedido. Verificá antes de prepararlo.</p>
@@ -226,7 +270,7 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
           : <button type="button" className="op-outline" disabled={busy} onClick={()=>openIssue(o.id,'reported')}>Reportar problema</button>
         )}
         {o.status==='delivered'&&pendingFor(o.id)&&!paymentFor(o.id)&&<button type="button" className="op-primary" disabled={busy||!!paymentAttempt} onClick={()=>openPayment(o.id)}>Registrar cobro</button>}
-        {o.status==='ready'&&<small>Listo para asignar a reparto.</small>}
+        {o.status==='ready'&&<small>{assignments.some(a=>a.order_id===o.id)?'Ya asignado a una ruta. Revisá Reparto.':'Seleccioná este pedido arriba para enviarlo a reparto.'}</small>}
       </div></article>)}</section></>}
     </div>
     {issueOrderId&&staffRole==='admin'&&<div className="op-payment-backdrop"><div className="op-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="op-issue-title">

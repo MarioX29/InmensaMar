@@ -36,3 +36,13 @@
 /* Core 0.6A transfer incident notes */
 .op-issue-label{font-weight:600;font-size:14px}
 .op-payment-dialog textarea{width:100%;box-sizing:border-box;border:1px solid #b8cdd0;border-radius:8px;padding:12px;min-height:92px;font:inherit;resize:vertical}
+
+/* Core 0.7D: dispatch multiple ready orders without leaving Pedidos */
+.op-dispatch-box{background:#f0f7f5;border:1px solid #bfd6d0;border-radius:10px;padding:16px;margin:12px 0 18px;display:grid;gap:12px}
+.op-dispatch-box strong{font-size:16px;color:#142F43}.op-dispatch-box p{margin:5px 0 0;color:#526c72;font-size:13px}
+.op-dispatch-options{display:flex;gap:14px;align-items:end;flex-wrap:wrap}.op-dispatch-options label{display:grid;gap:6px;font-weight:600;font-size:13px;flex:1;min-width:180px}
+.op-dispatch-options select{padding:12px;min-height:46px;border:1px solid #a8c2c2;border-radius:7px;background:white;color:#142F43;font-size:16px}
+.op-dispatch-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.op-dispatch-actions span{font-size:13px;color:#45616b}
+.op-dispatch-check{display:inline-flex;vertical-align:middle;margin-right:9px;align-items:center}.op-dispatch-check input{width:22px;height:22px;accent-color:#247B87;cursor:pointer}
+.op-dispatch-note{color:#8b4c20;line-height:1.5}
+@media(max-width:700px){.op-dispatch-options,.op-dispatch-actions{display:grid;grid-template-columns:1fr;width:100%}.op-dispatch-actions button{width:100%;min-height:48px}.op-dispatch-box{padding:14px}}
