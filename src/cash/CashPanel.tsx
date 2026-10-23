@@ -17,6 +17,8 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const [positions,setPositions]=useState<Position[]>([]);
  const [handoffs,setHandoffs]=useState<Handoff[]>([]);
  const [currentUser,setCurrentUser]=useState('');const [source,setSource]=useState('');const [amount,setAmount]=useState('');const [note,setNote]=useState('');
+ const [countedAmount,setCountedAmount]=useState('');
+ const [nextFloatAmount,setNextFloatAmount]=useState('');
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
  const attempt=useRef<{requestId:string;source:string;cents:number;note:string}|null>(null);
  const load=useCallback(async()=>{
@@ -71,6 +73,11 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
   window.addEventListener('focus',refresh);
   return ()=>{window.clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('focus',refresh);};
  },[load,staffRole]);
+ const parseQuetzales=(value:string)=>/^\d+(?:\.\d{1,2})?$/.test(value.trim())?Math.round(Number(value.trim())*100):null;
+ const countedCents=parseQuetzales(countedAmount);
+ const nextFloatCents=parseQuetzales(nextFloatAmount);
+ const closingDifference=dayBalance!==null&&countedCents!==null?countedCents-dayBalance.expected_cents:null;
+ const closingWithdrawal=countedCents!==null&&nextFloatCents!==null&&nextFloatCents<=countedCents?countedCents-nextFloatCents:null;
  const selected=positions.find(x=>x.user_id===source);
  const cents=amount.trim()&&/^\d+(\.\d{1,2})?$/.test(amount)?Math.round(Number(amount)*100):0;
  const canSubmit=!!selected&&cents>0&&cents<=Number(selected.remaining_cents)&&!busy;
@@ -115,6 +122,21 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
     </div>}
    </>:<p>No hay jornadas de Caja registradas.</p>}
   </div>
+  {day?.status==='open'&&<div className="cash-card" aria-label="Simulador de cierre diario">
+   <h3>Simular cierre diario</h3>
+   <p>Ingresá el efectivo contado y el sencillo que quedaría para mañana. Esta simulación no guarda ni cierra la jornada.</p>
+   <div className="cash-close-grid">
+    <label>Efectivo contado (Q)<input inputMode="decimal" value={countedAmount} onChange={e=>setCountedAmount(e.target.value)} placeholder="Ej. 612.50"/></label>
+    <label>Sencillo para mañana (Q)<input inputMode="decimal" value={nextFloatAmount} onChange={e=>setNextFloatAmount(e.target.value)} placeholder="Ej. 200.00"/></label>
+   </div>
+   {dayBalance? <div className="cash-day-breakdown">
+    <div><span>Efectivo esperado (estimación QA)</span><strong>{money(dayBalance.expected_cents)}</strong></div>
+    <div><span>Diferencia (contado - esperado)</span><strong>{closingDifference===null?'—':`${closingDifference<0?'-':''}${money(Math.abs(closingDifference))}`}</strong></div>
+    <div><span>Efectivo a retirar</span><strong>{closingWithdrawal===null?'—':money(closingWithdrawal)}</strong></div>
+   </div>:<p>Esperando el cálculo del efectivo esperado.</p>}
+   {countedCents!==null&&nextFloatCents!==null&&nextFloatCents>countedCents&&<p className="cash-error" role="alert">El sencillo para mañana no puede superar el efectivo contado.</p>}
+   <small>Solo simulación. No incluye gastos, retiros ni otros movimientos; no utilizar para cierre contable definitivo.</small>
+  </div>}
   {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
   <div className="cash-stats">
    <article><small>Efectivo cobrado en reparto</small><strong>{money(overview?.cash_cents||0)}</strong></article>
