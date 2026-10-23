@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 type Staff = { display_name: string; role: 'admin' | 'counter' | 'driver'; active: boolean };
-type AuthState = { status: 'loading' | 'signed_out' | 'authorized' | 'denied'; staff?: Staff };
+type AuthState = { status: 'loading' | 'signed_out' | 'authorized' | 'denied'; staff?: Staff; userId?: string };
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>({ status: 'loading' });
@@ -32,7 +32,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (profileError || !data || !data.active || !['admin', 'counter', 'driver'].includes(data.role)) {
         setAuth({ status: 'denied' });
       } else {
-        setAuth({ status: 'authorized', staff: data as Staff });
+        setAuth({ status: 'authorized', staff: data as Staff, userId: session.user.id });
       }
     }
     supabase.auth.getSession().then(({ data }) => resolve(data.session)).catch(() => {
@@ -102,5 +102,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
     {error && <p className="auth-error" role="alert">{error}</p>}
     <button className="primary" onClick={signOut}>Cerrar sesión</button>
   </section></main>;
-  return <><div className="session-strip"><span>{auth.staff?.display_name} · {auth.staff?.role}</span><button onClick={signOut}>Cerrar sesión</button></div>{isValidElement<{ staffRole?: Staff['role'] }>(children) ? cloneElement(children, {staffRole:auth.staff?.role}) : children}</>;
+  return <><div className="session-strip"><span>{auth.staff?.display_name} · {auth.staff?.role}</span><button onClick={signOut}>Cerrar sesión</button></div>{isValidElement<{ staffRole?: Staff['role'];userId?:string }>(children) ? cloneElement(children, {staffRole:auth.staff?.role, userId:auth.userId, key:auth.userId}) : children}</>;
 }
