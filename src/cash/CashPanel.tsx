@@ -25,6 +25,11 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const [currentUser,setCurrentUser]=useState('');const [source,setSource]=useState('');const [amount,setAmount]=useState('');const [note,setNote]=useState('');
  const [countedAmount,setCountedAmount]=useState('');
  const [nextFloatAmount,setNextFloatAmount]=useState('');
+ const [closeConfirm,setCloseConfirm]=useState('');
+ const [closeBusy,setCloseBusy]=useState(false);
+ const [closeError,setCloseError]=useState('');
+ const [closeNotice,setCloseNotice]=useState('');
+ const closeAttempt=useRef<{requestId:string;dayId:string;counted:number;nextFloat:number}|null>(null);
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
  const attempt=useRef<{requestId:string;source:string;cents:number;note:string}|null>(null);
  const load=useCallback(async()=>{
@@ -85,6 +90,23 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const nextFloatCents=parseQuetzales(nextFloatAmount);
  const closingDifference=dayBalance!==null&&countedCents!==null?countedCents-dayBalance.expected_cents:null;
  const closingWithdrawal=countedCents!==null&&nextFloatCents!==null&&nextFloatCents<=countedCents?countedCents-nextFloatCents:null;
+ const canClose=!!day&&day.status==='open'&&!!dayBalance&&!balanceError&&countedCents!==null&&nextFloatCents!==null&&nextFloatCents<=countedCents&&closeConfirm==='CERRAR'&&!closeBusy&&!busy;
+ async function confirmClose(){
+  if(!supabase||!canClose||!day||countedCents===null||nextFloatCents===null)return;
+  if(closeAttempt.current&&(closeAttempt.current.dayId!==day.id||closeAttempt.current.counted!==countedCents||closeAttempt.current.nextFloat!==nextFloatCents)){
+   setCloseError('Hay un cierre con resultado incierto. Revisá la jornada antes de intentar otro.');return;
+  }
+  if(!closeAttempt.current)closeAttempt.current={requestId:crypto.randomUUID(),dayId:day.id,counted:countedCents,nextFloat:nextFloatCents};
+  setCloseBusy(true);setCloseError('');setCloseNotice('');
+  try{
+   const a=closeAttempt.current;
+   const {error:e}=await supabase.rpc('close_cash_day',{p_cash_day_id:a.dayId,p_request_id:a.requestId,p_counted_cents:a.counted,p_next_day_float_cents:a.nextFloat});
+   if(e){setCloseError(message(e)+' Revisá el estado de la jornada antes de reintentar.');return;}
+   closeAttempt.current=null;setCloseConfirm('');setCloseNotice('Jornada cerrada. Revisá el historial antes de abrir la siguiente.');
+   await load();
+  }catch(e){setCloseError(message(e)+' Resultado incierto: revisá la jornada antes de reintentar.');}
+  finally{setCloseBusy(false);}
+ }
  const selected=positions.find(x=>x.user_id===source);
  const cents=amount.trim()&&/^\d+(\.\d{1,2})?$/.test(amount)?Math.round(Number(amount)*100):0;
  const canSubmit=!!selected&&cents>0&&cents<=Number(selected.remaining_cents)&&!busy;
@@ -142,8 +164,13 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
     <div><span>Efectivo a retirar</span><strong>{closingWithdrawal===null?'—':money(closingWithdrawal)}</strong></div>
    </div>:<p>Esperando el cálculo del efectivo esperado.</p>}
    {countedCents!==null&&nextFloatCents!==null&&nextFloatCents>countedCents&&<p className="cash-error" role="alert">El sencillo para mañana no puede superar el efectivo contado.</p>}
-   <small>Solo simulación. No incluye gastos, retiros ni otros movimientos; no utilizar para cierre contable definitivo.</small>
+   <small>Este cierre todavía está en QA: no contempla gastos, retiros ni todos los movimientos. Usar únicamente con jornadas ficticias verificadas.</small>
+   <label>Para confirmar una jornada de prueba, escribí CERRAR<input value={closeConfirm} onChange={e=>setCloseConfirm(e.target.value)} placeholder="CERRAR" disabled={closeBusy||busy}/></label>
+   <button className="cash-primary" disabled={!canClose} onClick={()=>void confirmClose()}>{closeBusy?'Confirmando…':'Confirmar cierre de prueba'}</button>
+   {closeError&&<p className="cash-error" role="alert">{closeError}</p>}
+   {closeNotice&&<p className="cash-notice" role="status">{closeNotice}</p>}
   </div>}
+  {closeNotice&&<p className="cash-notice" role="status">{closeNotice}</p>}
   {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
   <div className="cash-stats">
    <article><small>Efectivo cobrado en reparto</small><strong>{money(overview?.cash_cents||0)}</strong></article>
