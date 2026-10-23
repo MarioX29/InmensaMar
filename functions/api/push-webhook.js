@@ -300,7 +300,7 @@ export async function onRequestPost({ request, env }) {
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(base)) return json({ error: 'Invalid server configuration' }, 503);
   let incoming;
   try { incoming = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
-  if (incoming?.type !== 'INSERT' || incoming?.table !== 'push_events' || incoming?.record?.event_type !== 'delivery_assigned') {
+  if (incoming?.type !== 'INSERT' || incoming?.table !== 'push_events' || !['delivery_assigned', 'customer_order_created'].includes(incoming?.record?.event_type)) {
     return json({ error: 'Unsupported webhook event' }, 400);
   }
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -319,15 +319,38 @@ export async function onRequestPost({ request, env }) {
     let success = false;
     let error = 'No eligible subscriptions';
     try {
-      if (event.event_type !== 'delivery_assigned') throw Error('Unsupported event');
-      const routeUrl = new URL(`${base}/rest/v1/delivery_routes`);
-      routeUrl.searchParams.set('select', 'id,driver_id,dispatched_at');
-      routeUrl.searchParams.set('id', `eq.${event.reference_id}`);
-      routeUrl.searchParams.set('limit', '1');
-      const routeResponse = await supabaseCall(base, key, routeUrl.pathname + routeUrl.search);
-      if (!routeResponse.ok) throw Error(`Route query ${routeResponse.status}`);
-      const routes = await routeResponse.json();
-      if (!routes.length || !routes[0].dispatched_at || routes[0].driver_id !== event.recipient_user_id) throw Error('Route mismatch');
+      let payload;
+      if (event.event_type === 'delivery_assigned') {
+        const routeUrl = new URL(`${base}/rest/v1/delivery_routes`);
+        routeUrl.searchParams.set('select', 'id,driver_id,dispatched_at');
+        routeUrl.searchParams.set('id', `eq.${event.reference_id}`);
+        routeUrl.searchParams.set('limit', '1');
+        const routeResponse = await supabaseCall(base, key, routeUrl.pathname + routeUrl.search);
+        if (!routeResponse.ok) throw Error(`Route query ${routeResponse.status}`);
+        const routes = await routeResponse.json();
+        if (!routes.length || !routes[0].dispatched_at || routes[0].driver_id !== event.recipient_user_id) throw Error('Route mismatch');
+        payload = { title: 'Inmensa Mar · Nueva entrega', body: 'Tenés una entrega asignada. Tocá para verla.', url: '/' };
+      } else if (event.event_type === 'customer_order_created') {
+        const orderUrl = new URL(`${base}/rest/v1/customer_orders`);
+        orderUrl.searchParams.set('select', 'id,created_at');
+        orderUrl.searchParams.set('id', `eq.${event.reference_id}`);
+        orderUrl.searchParams.set('limit', '1');
+        const orderResponse = await supabaseCall(base, key, orderUrl.pathname + orderUrl.search);
+        if (!orderResponse.ok) throw Error(`Order query ${orderResponse.status}`);
+        const orders = await orderResponse.json();
+        if (!orders.length) throw Error('Order not found');
+        const staffUrl = new URL(`${base}/rest/v1/staff_profiles`);
+        staffUrl.searchParams.set('select', 'user_id,role,active');
+        staffUrl.searchParams.set('user_id', `eq.${event.recipient_user_id}`);
+        staffUrl.searchParams.set('limit', '1');
+        const staffResponse = await supabaseCall(base, key, staffUrl.pathname + staffUrl.search);
+        if (!staffResponse.ok) throw Error(`Staff query ${staffResponse.status}`);
+        const staff = await staffResponse.json();
+        if (!staff.length || !staff[0].active || !['admin', 'counter'].includes(staff[0].role)) throw Error('Recipient not eligible');
+        payload = { title: 'Inmensa Mar · Nuevo pedido', body: 'Hay un pedido nuevo para revisar.', url: '/' };
+      } else {
+        throw Error('Unsupported event');
+      }
       const subscriptionUrl = new URL(`${base}/rest/v1/push_subscriptions`);
       subscriptionUrl.searchParams.set('select', 'endpoint,p256dh,auth_key');
       subscriptionUrl.searchParams.set('user_id', `eq.${event.recipient_user_id}`);
@@ -339,11 +362,11 @@ export async function onRequestPost({ request, env }) {
       for (const sub of subs) {
         if (!permittedEndpoint(sub.endpoint)) continue;
         try {
-          const payload = await encrypt(sub, { title: 'Inmensa Mar · Nueva entrega', body: 'Tenés una entrega asignada. Tocá para verla.', url: '/' });
+          const encryptedPayload = await encrypt(sub, payload);
           const authorization = await vapidHeaders(sub.endpoint, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
           const result = await fetch(sub.endpoint, { method: 'POST', headers: {
             authorization, 'content-encoding': 'aes128gcm', 'content-type': 'application/octet-stream', ttl: '60', urgency: 'normal'
-          }, body: payload });
+          }, body: encryptedPayload });
           if ([200, 201, 202].includes(result.status)) sent++;
         } catch { /* Other devices can still receive. */ }
       }
