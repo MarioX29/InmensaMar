@@ -8,6 +8,12 @@ type DayBalance={opening_cents:number;counter_sales_cents:number;received_handof
 type Handoff={id:string;created_at:string;amount_cents:number;from_user_id:string;to_user_id:string;note:string|null};
 const money=(v:number)=>`Q ${(Number(v)/100).toFixed(2)}`;
 const message=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'Error inesperado';
+// Guatemala stays on UTC-06:00 year-round. End is exclusive: midnight starting the next business date.
+const nextGuatemalaMidnightUtc=(businessDate:string)=>{
+ const end=new Date(`${businessDate}T06:00:00.000Z`);
+ end.setUTCDate(end.getUTCDate()+1);
+ return end.toISOString();
+};
 export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const [day,setDay]=useState<CashDay|null>(null);
  const [dayError,setDayError]=useState('');
@@ -34,11 +40,12 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    setDay(latest);setDayError('');
    if(!latest||latest.status!=='open'){setDayBalance(null);setBalanceError('');}
    else{
-    // Payments and handoffs are filtered by the exact opening timestamp,
-    // so historical movements are never counted as today's cash.
+    // Only count movements between opening and the next Guatemala midnight.
+    // A forgotten close must not include payments from the following day.
+    const cutoff=nextGuatemalaMidnightUtc(latest.business_date);
     const [payments,received,userResult]=await Promise.all([
-     supabase.from('sale_payments').select('amount_cents,sales!inner(status)').eq('method','cash').eq('status','received').eq('sales.status','completed').gte('created_at',latest.opened_at),
-     supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',latest.opened_at),
+     supabase.from('sale_payments').select('amount_cents,sales!inner(status)').eq('method','cash').eq('status','received').eq('sales.status','completed').gte('created_at',latest.opened_at).lt('created_at',cutoff),
+     supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',latest.opened_at).lt('created_at',cutoff),
      supabase.auth.getUser()
     ]);
     const calcIssue=payments.error||received.error||userResult.error;
@@ -111,13 +118,13 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
     {day.status==='open'&&<div className="cash-day-summary">
      <h3>Efectivo esperado en mostrador</h3>
      {balanceError?<p className="cash-error" role="alert">No se pudo calcular: {balanceError}</p>:dayBalance?<>
-      <div className="cash-stats"><article><small>Esperado desde la apertura</small><strong>{money(dayBalance.expected_cents)}</strong></article></div>
+      <div className="cash-stats"><article><small>Esperado de la jornada</small><strong>{money(dayBalance.expected_cents)}</strong></article></div>
       <div className="cash-day-breakdown">
        <div><span>Sencillo inicial</span><strong>{money(dayBalance.opening_cents)}</strong></div>
-       <div><span>Ventas en efectivo desde apertura</span><strong>{money(dayBalance.counter_sales_cents)}</strong></div>
-       <div><span>Liquidaciones recibidas desde apertura</span><strong>{money(dayBalance.received_handoffs_cents)}</strong></div>
+       <div><span>Ventas en efectivo de la jornada</span><strong>{money(dayBalance.counter_sales_cents)}</strong></div>
+       <div><span>Liquidaciones de la jornada</span><strong>{money(dayBalance.received_handoffs_cents)}</strong></div>
       </div>
-      <small>Estimación para QA. No incluye retiros, gastos, devoluciones ni movimientos de sencillo. No usar aún como cierre definitivo.</small>
+      <small>Estimación para QA, limitada a la fecha comercial de Guatemala. No incluye retiros, gastos, devoluciones ni movimientos de sencillo. No usar aún como cierre definitivo.</small>
      </>:<p>Calculando efectivo esperado…</p>}
     </div>}
    </>:<p>No hay jornadas de Caja registradas.</p>}
