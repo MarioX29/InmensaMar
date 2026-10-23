@@ -59,6 +59,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
   async function signOut() {
     if (!supabase) return;
     setError('');
+    // Revoke this installation's push subscription before switching accounts.
+    // Only remove rows owned by the currently authenticated user (RLS).
+    try {
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager.getSubscription();
+        if (user && subscription) {
+          const { error: deleteError } = await supabase.from('push_subscriptions')
+            .delete().eq('user_id', user.id).eq('endpoint', subscription.endpoint);
+          if (deleteError) throw deleteError;
+          await subscription.unsubscribe();
+        }
+      }
+    } catch {
+      setError('No se pudo desvincular las notificaciones. Revisá la conexión e intentá de nuevo.');
+      return;
+    }
     const { error: signOutError } = await supabase.auth.signOut();
     if (signOutError) setError('No se pudo cerrar sesión. Intentá nuevamente.');
   }
