@@ -79,6 +79,23 @@ export function NotificationSetup() {
       setMessage(error instanceof Error ? error.message : 'No se pudo registrar el dispositivo.');
     } finally { setBusy(false); }
   }
+  async function remoteTest() {
+    setBusy(true); setMessage('');
+    try {
+      if (!supabase) throw new Error('Supabase no está configurado.');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Iniciá sesión nuevamente.');
+      const response = await fetch('/api/push-test', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Falló el envío remoto.');
+      setMessage(`Enviadas al servicio push: ${result.sent}. Fallidas: ${result.failed}. Revisá tu dispositivo.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo enviar la push remota.');
+    } finally { setBusy(false); }
+  }
   async function test() {
     setBusy(true); setMessage('');
     try {
@@ -101,9 +118,10 @@ export function NotificationSetup() {
       {status === 'denied' && <p>Notificaciones bloqueadas. Revisá los permisos del dispositivo.</p>}
       {status === 'granted' && <p>{registered ? 'Dispositivo registrado para push.' : 'Permiso concedido. Registrá este dispositivo para push.'}</p>}
       {(status === 'default' || status === 'granted') && <button type="button" className="notification-action" disabled={busy} onClick={() => void enable()}>{busy ? 'Registrando…' : registered ? 'Volver a registrar dispositivo' : 'Activar y registrar dispositivo'}</button>}
+      {status === 'granted' && registered && <button type="button" className="notification-action" disabled={busy} onClick={() => void remoteTest()}>Probar push remota</button>}
       {status === 'granted' && <button type="button" className="notification-action" disabled={busy} onClick={() => void test()}>Probar aviso local</button>}
       {message && <p role="status">{message}</p>}
-      <small>El envío remoto de pedidos se conectará en la siguiente etapa.</small>
+      <small>Prueba remota: solo a tus dispositivos. Los avisos automáticos de pedidos siguen pendientes.</small>
     </section>}
   </div>;
 }
