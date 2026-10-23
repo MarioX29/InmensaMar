@@ -4,12 +4,15 @@ import './cash.css';
 type Position={user_id:string;display_name:string;collected_cents:number;handed_off_cents:number;remaining_cents:number};
 type Overview={cash_cents:number;transfer_reported_cents:number;pending_cents:number;open_issues:number;handed_off_cents:number};
 type CashDay={id:string;business_date:string;status:'open'|'closed';opening_float_cents:number;opened_at:string};
+type DayBalance={opening_cents:number;counter_sales_cents:number;received_handoffs_cents:number;expected_cents:number};
 type Handoff={id:string;created_at:string;amount_cents:number;from_user_id:string;to_user_id:string;note:string|null};
 const money=(v:number)=>`Q ${(Number(v)/100).toFixed(2)}`;
 const message=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'Error inesperado';
 export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const [day,setDay]=useState<CashDay|null>(null);
  const [dayError,setDayError]=useState('');
+ const [dayBalance,setDayBalance]=useState<DayBalance|null>(null);
+ const [balanceError,setBalanceError]=useState('');
  const [overview,setOverview]=useState<Overview|null>(null);
  const [positions,setPositions]=useState<Position[]>([]);
  const [handoffs,setHandoffs]=useState<Handoff[]>([]);
@@ -23,7 +26,31 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    supabase.from('delivery_cash_handoffs').select('id,created_at,amount_cents,from_user_id,to_user_id,note').order('created_at',{ascending:false}).limit(50),
    supabase.from('cash_days').select('id,business_date,status,opening_float_cents,opened_at').order('opened_at',{ascending:false}).limit(1)
   ]);
-  if(d.error){setDayError(message(d.error));}else{setDay((d.data?.[0] as CashDay|undefined)||null);setDayError('');}
+  if(d.error){setDayError(message(d.error));setDayBalance(null);setBalanceError('');}
+  else{
+   const latest=(d.data?.[0] as CashDay|undefined)||null;
+   setDay(latest);setDayError('');
+   if(!latest||latest.status!=='open'){setDayBalance(null);setBalanceError('');}
+   else{
+    // Payments and handoffs are filtered by the exact opening timestamp,
+    // so historical movements are never counted as today's cash.
+    const [payments,config,received]=await Promise.all([
+     supabase.from('sale_payments').select('amount_cents,sales!inner(status)').eq('method','cash').eq('status','received').eq('sales.status','completed').gte('created_at',latest.opened_at),
+     supabase.from('delivery_cash_config').select('recipient_user_id').eq('singleton',true).maybeSingle(),
+     supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',latest.opened_at)
+    ]);
+    const calcIssue=payments.error||config.error||received.error;
+    if(calcIssue||!config.data?.recipient_user_id){
+     setDayBalance(null);setBalanceError(calcIssue?message(calcIssue):'No se encontró el responsable de Caja.');
+    }else{
+     const counter=(payments.data||[]).reduce((sum,p)=>sum+Number(p.amount_cents),0);
+     const handed=(received.data||[]).filter(h=>h.to_user_id===config.data.recipient_user_id).reduce((sum,h)=>sum+Number(h.amount_cents),0);
+     const opening=Number(latest.opening_float_cents);
+     setDayBalance({opening_cents:opening,counter_sales_cents:counter,received_handoffs_cents:handed,expected_cents:opening+counter+handed});
+     setBalanceError('');
+    }
+   }
+  }
   const issue=o.error||p.error||h.error;
   if(issue){setError(message(issue));return;}
   setOverview((o.data||[])[0]||null);setPositions(p.data||[]);setHandoffs(h.data||[]);setError('');
@@ -70,7 +97,19 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    {dayError?<p className="cash-error" role="alert">No se pudo consultar la apertura: {dayError}</p>:day?<>
     <p>{day.status==='open'?'Caja abierta':'Caja cerrada'} · {day.business_date}</p>
     <div className="cash-stats"><article><small>Sencillo inicial registrado</small><strong>{money(day.opening_float_cents)}</strong></article></div>
-    <small>El sencillo inicial no es una venta. Aún no se incluye en los totales de reparto de abajo.</small>
+    <small>El sencillo inicial no es una venta.</small>
+    {day.status==='open'&&<div className="cash-day-summary">
+     <h3>Efectivo esperado en mostrador</h3>
+     {balanceError?<p className="cash-error" role="alert">No se pudo calcular: {balanceError}</p>:dayBalance?<>
+      <div className="cash-stats"><article><small>Esperado desde la apertura</small><strong>{money(dayBalance.expected_cents)}</strong></article></div>
+      <div className="cash-day-breakdown">
+       <div><span>Sencillo inicial</span><strong>{money(dayBalance.opening_cents)}</strong></div>
+       <div><span>Ventas en efectivo desde apertura</span><strong>{money(dayBalance.counter_sales_cents)}</strong></div>
+       <div><span>Liquidaciones recibidas desde apertura</span><strong>{money(dayBalance.received_handoffs_cents)}</strong></div>
+      </div>
+      <small>Estimación para QA. No incluye retiros, gastos, devoluciones ni movimientos de sencillo. No usar aún como cierre definitivo.</small>
+     </>:<p>Calculando efectivo esperado…</p>}
+    </div>}
    </>:<p>No hay jornadas de Caja registradas.</p>}
   </div>
   {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
