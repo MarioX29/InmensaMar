@@ -40,11 +40,12 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
      supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',latest.opened_at)
     ]);
     const calcIssue=payments.error||config.error||received.error;
-    if(calcIssue||!config.data?.recipient_user_id){
+    const recipientId=config.data?.recipient_user_id;
+    if(calcIssue||!recipientId){
      setDayBalance(null);setBalanceError(calcIssue?message(calcIssue):'No se encontró el responsable de Caja.');
     }else{
      const counter=(payments.data||[]).reduce((sum,p)=>sum+Number(p.amount_cents),0);
-     const handed=(received.data||[]).filter(h=>h.to_user_id===config.data.recipient_user_id).reduce((sum,h)=>sum+Number(h.amount_cents),0);
+     const handed=(received.data||[]).filter(h=>h.to_user_id===recipientId).reduce((sum,h)=>sum+Number(h.amount_cents),0);
      const opening=Number(latest.opening_float_cents);
      setDayBalance({opening_cents:opening,counter_sales_cents:counter,received_handoffs_cents:handed,expected_cents:opening+counter+handed});
      setBalanceError('');
