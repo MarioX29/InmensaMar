@@ -34,17 +34,19 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    else{
     // Payments and handoffs are filtered by the exact opening timestamp,
     // so historical movements are never counted as today's cash.
-    const [payments,config,received]=await Promise.all([
+    const [payments,received,userResult]=await Promise.all([
      supabase.from('sale_payments').select('amount_cents,sales!inner(status)').eq('method','cash').eq('status','received').eq('sales.status','completed').gte('created_at',latest.opened_at),
-     supabase.from('delivery_cash_config').select('recipient_user_id').eq('singleton',true).maybeSingle(),
-     supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',latest.opened_at)
+     supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',latest.opened_at),
+     supabase.auth.getUser()
     ]);
-    const calcIssue=payments.error||config.error||received.error;
-    const recipientId=config.data?.recipient_user_id;
+    const calcIssue=payments.error||received.error||userResult.error;
+    const recipientId=userResult.data.user?.id;
     if(calcIssue||!recipientId){
-     setDayBalance(null);setBalanceError(calcIssue?message(calcIssue):'No se encontró el responsable de Caja.');
+     setDayBalance(null);setBalanceError(calcIssue?message(calcIssue):'No se pudo identificar al administrador de Caja.');
     }else{
      const counter=(payments.data||[]).reduce((sum,p)=>sum+Number(p.amount_cents),0);
+     // QA: count handoffs received by the signed-in admin.
+     // Confirm this admin is the configured cash recipient before using for closing.
      const handed=(received.data||[]).filter(h=>h.to_user_id===recipientId).reduce((sum,h)=>sum+Number(h.amount_cents),0);
      const opening=Number(latest.opening_float_cents);
      setDayBalance({opening_cents:opening,counter_sales_cents:counter,received_handoffs_cents:handed,expected_cents:opening+counter+handed});
