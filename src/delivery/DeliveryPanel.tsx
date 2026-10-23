@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './delivery.css';
-import { DriverCashFloat } from './DriverCashFloat';
 type Driver={user_id:string;display_name:string};
 type Route={id:string;label:string;driver_id:string;created_at:string;dispatched_at:string|null;status:string};
 type Order={id:string;customer_name:string;total_cents:number;status?:string};
@@ -158,7 +157,6 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const pendingLate=orders.filter(o=>o.status==='delivered'&&!hasPayment(o.id)&&paymentEvents.some(e=>e.order_id===o.id&&e.event_kind==='pending'));
  return <section className="delivery-module">
   <p className="delivery-warning">Confirmar salida asigna los pedidos y registra su salida física. Al marcar entregado registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada no está verificada.</p>
-  {staffRole==='driver'&&<DriverCashFloat />}
   {error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>En reparto</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
