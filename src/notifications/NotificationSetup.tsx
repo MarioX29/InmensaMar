@@ -27,6 +27,10 @@ export function NotificationSetup() {
   const [busy, setBusy] = useState(false);
   const [registered, setRegistered] = useState(false);
   const [message, setMessage] = useState('');
+  const [role, setRole] = useState('');
+  const [orderAlerts, setOrderAlerts] = useState(true);
+  const [deliveryAlerts, setDeliveryAlerts] = useState(true);
+  const [savingPrefs, setSavingPrefs] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { setStatus(check()); }, []);
   useEffect(() => {
@@ -50,6 +54,42 @@ export function NotificationSetup() {
     })().catch(() => { if (active) setRegistered(false); });
     return () => { active = false; };
   }, [open, status]);
+  useEffect(() => {
+    if (!open || !supabase) return;
+    let active = true;
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const [profile, preferences] = await Promise.all([
+        supabase.from('staff_profiles').select('role').eq('user_id', user.id).maybeSingle(),
+        supabase.from('push_preferences').select('new_orders,deliveries').eq('user_id', user.id).maybeSingle()
+      ]);
+      if (!active) return;
+      if (profile.error || preferences.error) {
+        setMessage('No se pudieron consultar las preferencias.');
+        return;
+      }
+      setRole(profile.data?.role || '');
+      setOrderAlerts(preferences.data?.new_orders ?? true);
+      setDeliveryAlerts(preferences.data?.deliveries ?? true);
+    })().catch(() => { if (active) setMessage('No se pudieron consultar las preferencias.'); });
+    return () => { active = false; };
+  }, [open]);
+  async function savePreference(field: 'new_orders' | 'deliveries', value: boolean) {
+    if (!supabase || savingPrefs) return;
+    setSavingPrefs(true);
+    setMessage('');
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error('Iniciá sesión nuevamente.');
+      const { error } = await supabase.from('push_preferences').upsert({ user_id: user.id, [field]: value, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      if (error) throw error;
+      if (field === 'new_orders') setOrderAlerts(value);
+      else setDeliveryAlerts(value);
+      setMessage('Preferencia guardada.');
+    } catch { setMessage('No se pudo guardar la preferencia.'); }
+    finally { setSavingPrefs(false); }
+  }
   async function enable() {
     setBusy(true); setMessage('');
     try {
@@ -137,8 +177,14 @@ export function NotificationSetup() {
       {(status === 'default' || status === 'granted') && <button type="button" className="notification-action" disabled={busy} onClick={() => void enable()}>{busy ? 'Registrando…' : registered ? 'Volver a registrar dispositivo' : 'Activar y registrar dispositivo'}</button>}
       {status === 'granted' && registered && <button type="button" className="notification-action" disabled={busy} onClick={() => void remoteTest()}>Probar push remota</button>}
       {status === 'granted' && <button type="button" className="notification-action" disabled={busy} onClick={() => void test()}>Probar aviso local</button>}
+      {role === 'admin' && <div className="notification-preferences">
+        <strong>Qué avisos quiero recibir</strong>
+        <label><span>Pedidos nuevos</span><input type="checkbox" checked={orderAlerts} disabled={savingPrefs} onChange={e => void savePreference('new_orders', e.target.checked)}/></label>
+        <label><span>Mis entregas asignadas</span><input type="checkbox" checked={deliveryAlerts} disabled={savingPrefs} onChange={e => void savePreference('deliveries', e.target.checked)}/></label>
+        <small>Estas opciones se aplican a todos tus dispositivos. No cambian tus permisos.</small>
+      </div>}
       {message && <p role="status">{message}</p>}
-      <small>Prueba remota: solo a tus dispositivos. Los avisos automáticos de pedidos siguen pendientes.</small>
+      <small>Prueba remota: solo a tus dispositivos. Los avisos automáticos se gestionan según tu rol y preferencias.</small>
     </section>}
   </div>;
 }
