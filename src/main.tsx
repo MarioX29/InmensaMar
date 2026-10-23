@@ -22,6 +22,19 @@ const money = (cents:number) => `Q ${(cents/100).toFixed(2)}`;
 const units: Record<Product['unit'],string> = {lb:'lb',unit:'unidad',package:'paquete'};
 const step = (p:Product) => p.unit === 'lb' ? 0.5 : 1;
 const pendingKey = 'im-pending-checkout-v03';
+const cartDraftKey = (userId:string) => `im-cart-draft-v1:${userId}`;
+function readCartDraft(userId:string):Line[] {
+  if (!userId) return [];
+  try {
+    const raw=localStorage.getItem(cartDraftKey(userId));
+    if (!raw) return [];
+    const value:unknown=JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.filter((line):line is Line=>Boolean(line && typeof line==='object' &&
+      typeof line.id==='string' && /^[0-9a-f-]{36}$/i.test(line.id) &&
+      typeof line.qty==='number' && Number.isFinite(line.qty) && line.qty>0 && line.qty<=10000)).slice(0,100);
+  } catch { return []; }
+}
 function readPending(): PendingCheckout|null { try {const v=localStorage.getItem(pendingKey);return v?JSON.parse(v) as PendingCheckout:null;} catch {return null;} }
 function friendlyError(message:string) {
   if (/Insufficient available inventory/i.test(message)) return 'No hay suficiente inventario disponible. Actualizá el catálogo.';
@@ -30,11 +43,11 @@ function friendlyError(message:string) {
   if (/JWT|unauthorized|permission|not authorized/i.test(message)) return 'No tenés permisos para esta operación. Revisá tu sesión.';
   return `No se completó la operación: ${message}`;
 }
-function App({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
+function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver';userId?:string}) {
   const [page,setPage]=useState<Page>(staffRole==='driver'?'reparto':'vender');
   const [products,setProducts]=useState<Product[]>([]);
   const [sales,setSales]=useState<Sale[]>([]);
-  const [lines,setLines]=useState<Line[]>([]);
+  const [lines,setLines]=useState<Line[]>(()=>readCartDraft(userId));
   const [query,setQuery]=useState('');
   const [category,setCategory]=useState('Todos');
   const [cartOpen,setCartOpen]=useState(false);
@@ -47,6 +60,19 @@ function App({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
   const [pending,setPending]=useState<PendingCheckout|null>(readPending);
   const [checkingPending,setCheckingPending]=useState(false);
   const processing=useRef(false);
+  // Drafts belong to one signed-in user on this installation; never store payment details.
+  useEffect(()=>{
+    if (!userId || pending) return;
+    try {
+      if (lines.length) localStorage.setItem(cartDraftKey(userId),JSON.stringify(lines));
+      else localStorage.removeItem(cartDraftKey(userId));
+    } catch { /* Storage can be unavailable; checkout remains usable. */ }
+  },[userId,lines,pending]);
+  // After an uncertain checkout, never restore the draft as a second sale.
+  useEffect(()=>{
+    if (!userId || !pending) return;
+    try { localStorage.removeItem(cartDraftKey(userId)); } catch { /* ignore */ }
+  },[userId,pending]);
   const cart=useMemo(()=>lines.map(l=>({line:l,product:products.find(p=>p.id===l.id)})).filter((x):x is {line:Line;product:Product}=>Boolean(x.product)),[lines,products]);
   const totalCents=cart.reduce((s,x)=>s+Math.round(x.line.qty*x.product.priceCents),0);
   const categories=['Todos',...new Set(products.map(p=>p.family))];
@@ -88,6 +114,7 @@ function App({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
     localStorage.removeItem(pendingKey);
     setPending(null);
     setLines([]);
+    try { if(userId)localStorage.removeItem(cartDraftKey(userId)); } catch { /* ignore */ }
     setCash('');
     setCartOpen(false);
     setError('');
@@ -167,7 +194,7 @@ function App({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
       }
       const payment=await supabase.rpc('record_sale_payment',{p_request_id:attempt.paymentId,p_sale_id:saleId,p_method:'cash',p_amount_cents:due,p_pending_verification:false});
       if(payment.error)throw payment.error;
-      localStorage.removeItem(pendingKey);setPending(null);setLines([]);setCash('');setCartOpen(false);
+      localStorage.removeItem(pendingKey);setPending(null);setLines([]);try {if(userId)localStorage.removeItem(cartDraftKey(userId));} catch { /* ignore */ }setCash('');setCartOpen(false);
       setReceipt({saleId,totalCents:due,cashCents:attempt.cashCents});setNotice('');
       await refresh();
     } catch(e) {
@@ -182,7 +209,7 @@ function App({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
   const cartPanel=<section className="cart"><div className="cart-title"><strong>Venta actual</strong><button className="mobile-only icon-btn" aria-label="Cerrar carrito" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>
     {cart.length?cart.map(({line,product})=><div className="cart-line" key={line.id}><div><strong>{product.name}</strong><small>{money(product.priceCents)} / {units[product.unit]}</small></div>{line.qty>product.stock&&<small className="cart-stock-warning">Disponible: {product.stock} {units[product.unit]}. Reducí o quitá este producto.</small>}<div className="cart-bottom"><div className="stepper"><button disabled={busy||!!pending} aria-label="Restar" onClick={()=>change(product,-step(product))}><Minus size={15}/></button><span>{line.qty}</span><button disabled={busy||!!pending} aria-label="Sumar" onClick={()=>change(product,step(product))}><Plus size={15}/></button></div><b>{money(Math.round(line.qty*product.priceCents))}</b><button className="remove-line" type="button" disabled={busy||!!pending} onClick={()=>removeLine(product.id)} aria-label={`Quitar ${product.name}`}>Quitar</button></div></div>):<p className="empty">Agregá productos para comenzar.</p>}
     <div className="cart-checkout"><div className="total"><span>Total estimado</span><strong>{money(totalCents)}</strong></div><label htmlFor="cash">Efectivo recibido (Q)</label><input id="cash" type="number" inputMode="decimal" min="0" step="0.01" value={pending?(pending.cashCents/100).toFixed(2):cash} disabled={busy||!!pending} onChange={e=>setCash(e.target.value)} placeholder="0.00"/><button className="primary" disabled={busy||!!pending||!cart.length||staleLines.length>0} onClick={()=>void checkout()}><Check size={17}/>{busy?'Guardando…':'Registrar venta y cobro'}</button><small>Operaciones de prueba conectadas a Supabase. Solo efectivo en esta versión.</small></div></section>;
-  return <div className="shell"><header className="top"><div className="brand"><span className="mark">IM</span><div><strong>Inmensa Mar</strong><small>Operación · QA 0.7G-2</small></div></div><div className="top-actions"><span className="demo">ENTORNO DE PRUEBA</span><NotificationSetup/></div></header><div className="workspace"><aside className="sidebar"><div className="side-label">OPERACIÓN</div>{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}{label}</button>)}</aside><main className="main">
+  return <div className="shell"><header className="top"><div className="brand"><span className="mark">IM</span><div><strong>Inmensa Mar</strong><small>Operación</small></div></div><div className="top-actions"><span className="demo">ENTORNO DE PRUEBA</span><NotificationSetup/></div></header><div className="workspace"><aside className="sidebar"><div className="side-label">OPERACIÓN</div>{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}{label}</button>)}</aside><main className="main">
     <CashOpening staffRole={staffRole}/>
     <div className="heading heading-actions"><div><h1>{page==='vender'?'Nueva venta':page==='inventario'?'Inventario':page==='resumen'?'Resumen':page==='reparto'?'Reparto':page==='caja'?'Caja':'Pedidos'}</h1><p>{page==='vender'?'Seleccioná productos y registrá el cobro en Supabase.':page==='inventario'?'Existencias disponibles por variante.':page==='resumen'?'Ventas registradas en la base de datos.':page==='reparto'?'Asignación de rutas y pedidos listos.':page==='caja'?'Control de efectivo y liquidaciones de reparto.':'Recepción y preparación de pedidos.'}</p></div><button className="refresh-btn" onClick={()=>void refresh()} disabled={busy}><RefreshCw size={16}/> Actualizar</button></div>
     {error&&<div className="error-panel" role="alert">{error}<button className="dismiss-error" type="button" onClick={()=>setError('')} aria-label="Cerrar error"><X size={16}/></button>{pending&&<p>Hay una operación pendiente de verificar. No iniciés otra venta hasta resolverla.</p>}</div>}
