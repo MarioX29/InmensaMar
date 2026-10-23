@@ -192,7 +192,50 @@ function App({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
     </main></div>{page==='vender'&&(lines.length>0||pending)&&<button className="mobile-cart-trigger" onClick={()=>setCartOpen(true)}><span>{pending?'Cobro pendiente':`Venta actual · ${lines.length} productos`}</span><strong>{money(totalCents)} →</strong></button>}{cartOpen&&page==='vender'&&<div className="drawer-backdrop" onClick={()=>setCartOpen(false)}><div className="drawer" onClick={e=>e.stopPropagation()}>{cartPanel}</div></div>}<nav className="bottom-nav">{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}<span>{label}</span></button>)}</nav>{notice&&<div className="notice" role="status"><span>{notice}</span><button aria-label="Cerrar aviso" onClick={()=>setNotice('')}><X size={16}/></button></div>}</div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthGate><App/></AuthGate></React.StrictMode>);
-// Register a minimal service worker. Push permissions are added in Core 0.7B.
+// Installed PWA update check. Never reload a sale automatically.
+declare const __APP_BUILD_ID__: string;
+if (import.meta.env.PROD) {
+  let checking = false;
+  let updateShown = false;
+  const checkForUpdates = async () => {
+    if (checking || updateShown || !navigator.onLine) return;
+    checking = true;
+    try {
+      const response = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) return;
+      const data: unknown = await response.json();
+      if (!data || typeof data !== 'object' || !('buildId' in data)) return;
+      const latest = (data as {buildId?: unknown}).buildId;
+      if (typeof latest !== 'string' || latest === __APP_BUILD_ID__) return;
+      updateShown = true;
+      const banner = document.createElement('div');
+      banner.setAttribute('role', 'status');
+      banner.style.cssText = 'position:fixed;bottom:78px;left:12px;right:12px;z-index:9999;max-width:430px;margin:0 auto;background:#142F43;color:white;padding:14px;border-radius:12px;box-shadow:0 4px 20px #0004;font:15px system-ui;display:flex;align-items:center;gap:12px';
+      const message = document.createElement('span');
+      message.textContent = 'Hay una nueva versión de Inmensa Mar.';
+      message.style.flex = '1';
+      const action = document.createElement('button');
+      action.textContent = 'Actualizar';
+      action.style.cssText = 'background:#85C7C1;color:#142F43;border:0;border-radius:8px;padding:10px;font-weight:700';
+      action.onclick = () => window.location.reload();
+      const dismiss = document.createElement('button');
+      dismiss.textContent = 'Después';
+      dismiss.style.cssText = 'background:transparent;color:white;border:0;padding:8px';
+      dismiss.onclick = () => { banner.remove(); updateShown = false; };
+      banner.append(message, action, dismiss);
+      document.body.appendChild(banner);
+    } catch { /* Offline: retry next time the app is opened. */ }
+    finally { checking = false; }
+  };
+  window.addEventListener('load', () => { void checkForUpdates(); });
+  window.addEventListener('pageshow', () => { void checkForUpdates(); });
+  window.addEventListener('focus', () => { void checkForUpdates(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void checkForUpdates();
+  });
+  window.addEventListener('online', () => { void checkForUpdates(); });
+}
+// Keep the same service worker scope to preserve existing Web Push subscriptions.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
