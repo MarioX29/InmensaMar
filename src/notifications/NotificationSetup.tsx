@@ -64,16 +64,33 @@ export function NotificationSetup() {
       const subscription = await sw.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeVapid(vapidPublicKey) });
       const json = subscription.toJSON();
       if (!json.keys?.p256dh || !json.keys?.auth) throw new Error('La suscripción no contiene claves válidas.');
-      // Do not overwrite subscriptions belonging to another account: the endpoint is globally unique.
-      const { data: existing, error: readError } = await supabase.from('push_subscriptions').select('id').eq('endpoint', subscription.endpoint).maybeSingle();
-      if (readError) throw readError;
+      // RLS only exposes the current user's rows. Never update another user's subscription.
+      const { data: own, error: ownError } = await supabase.from('push_subscriptions')
+        .select('id').eq('user_id', user.id).eq('endpoint', subscription.endpoint).maybeSingle();
+      if (ownError) throw ownError;
       const payload = { user_id: user.id, endpoint: subscription.endpoint, p256dh: json.keys.p256dh, auth_key: json.keys.auth, updated_at: new Date().toISOString() };
-      const result = existing
-        ? await supabase.from('push_subscriptions').update(payload).eq('id', existing.id)
+      let result = own
+        ? await supabase.from('push_subscriptions').update(payload).eq('id', own.id)
         : await supabase.from('push_subscriptions').insert(payload);
-      if (result.error) throw result.error;
+      if (result.error?.code === '23505' && !own) {
+        // Same browser was previously used by a different account. Replace its
+        // browser subscription, never transfer another user's DB record.
+        await subscription.unsubscribe();
+        const fresh = await sw.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeVapid(vapidPublicKey) });
+        const freshJson = fresh.toJSON();
+        if (!freshJson.keys?.p256dh || !freshJson.keys?.auth) throw new Error('No se pudo renovar la suscripción.');
+        result = await supabase.from('push_subscriptions').insert({
+          user_id: user.id, endpoint: fresh.endpoint,
+          p256dh: freshJson.keys.p256dh, auth_key: freshJson.keys.auth,
+          updated_at: new Date().toISOString()
+        });
+      }
+      if (result.error) {
+        if (result.error.code === '23505') throw new Error('Este dispositivo sigue asociado a otra cuenta. Ingresá con la cuenta anterior y cerrá sesión desde la aplicación; luego volvé a intentarlo.');
+        throw result.error;
+      }
       setRegistered(true);
-      setMessage('Dispositivo registrado para recibir push. Falta configurar el envío remoto.');
+      setMessage('Dispositivo registrado para recibir push.');
     } catch (error) {
       setRegistered(false);
       setMessage(error instanceof Error ? error.message : 'No se pudo registrar el dispositivo.');
