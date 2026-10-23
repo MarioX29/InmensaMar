@@ -9,6 +9,7 @@ type Handoff={id:string;created_at:string;amount_cents:number;from_user_id:strin
 const money=(v:number)=>`Q ${(Number(v)/100).toFixed(2)}`;
 const message=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'Error inesperado';
 // Guatemala stays on UTC-06:00 year-round. End is exclusive: midnight starting the next business date.
+const guatemalaDayStartUtc=(businessDate:string)=>`${businessDate}T06:00:00.000Z`;
 const nextGuatemalaMidnightUtc=(businessDate:string)=>{
  const end=new Date(`${businessDate}T06:00:00.000Z`);
  end.setUTCDate(end.getUTCDate()+1);
@@ -45,12 +46,13 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    setDay(latest);setDayError('');
    if(!latest||latest.status!=='open'){setDayBalance(null);setBalanceError('');}
    else{
-    // Only count movements between opening and the next Guatemala midnight.
+    // Count all cash payments within the Guatemala business date, even before opening.
     // A forgotten close must not include payments from the following day.
     const cutoff=nextGuatemalaMidnightUtc(latest.business_date);
+    const dayStart=guatemalaDayStartUtc(latest.business_date);
     const [payments,received,userResult]=await Promise.all([
-     supabase.from('sale_payments').select('amount_cents,sales!inner(status)').eq('method','cash').eq('status','received').eq('sales.status','completed').gte('created_at',latest.opened_at).lt('created_at',cutoff),
-     supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',latest.opened_at).lt('created_at',cutoff),
+     supabase.from('sale_payments').select('amount_cents,sales!inner(status)').eq('method','cash').eq('status','received').eq('sales.status','completed').gte('created_at',dayStart).lt('created_at',cutoff),
+     supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',dayStart).lt('created_at',cutoff),
      supabase.auth.getUser()
     ]);
     const calcIssue=payments.error||received.error||userResult.error;
