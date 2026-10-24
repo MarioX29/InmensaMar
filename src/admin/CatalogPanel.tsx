@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import './admin.css';
+import {saveAdminAttempt,clearAdminAttempt} from './AdminPending';
 type Family={id:string;name:string};
 type Variant={id:string;family_id:string;name:string;base_unit:string;price_cents:number;active:boolean};
 type Action='create_family'|'rename_family'|'create_variant'|'rename_variant'|'set_variant_active';
@@ -25,8 +26,8 @@ export function CatalogPanel({onChanged}:{onChanged:()=>Promise<void>}){
  if(pending&&JSON.stringify(payload)!==JSON.stringify(pending.payload)){setError('Hay una operación sin confirmar. Verificá su resultado antes de cambiar los datos o repetirla.');return}
  if(!window.confirm(action==='set_variant_active'?`¿${active?'Reactivar':'Desactivar'} ${selected?.name}?`:'¿Confirmar cambio en el catálogo?'))return;
  setPending({id:payload.p_request_id,payload});setBusy(true);
- try{const {error:rpcError}=await supabase.rpc('admin_catalog_change',payload);if(rpcError)throw rpcError;setPending(null);setNotice('Cambio guardado correctamente.');setName('');setPrice('');await load();await onChanged()}
- catch(e){setError(e instanceof Error?e.message:'No se pudo confirmar. Verificá en Supabase antes de repetir.');}
+ try{const attempt=await saveAdminAttempt('catalog',payload,`Cambio de catálogo: ${action}`);const {error:rpcError}=await supabase.rpc('admin_catalog_change',payload);if(rpcError)throw rpcError;await clearAdminAttempt(attempt);setPending(null);setNotice('Cambio guardado correctamente.');setName('');setPrice('');await load();await onChanged()}
+ catch(e){setError((e instanceof Error?e.message:'No se pudo confirmar')+'. Salí y volvé a entrar a Administración para verificar el intento.');}
  finally{setBusy(false)}
  }
  const filtered=variants.filter(v=>!familyId||v.family_id===familyId);

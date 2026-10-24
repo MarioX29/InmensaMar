@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import './admin.css';
+import {saveAdminAttempt,clearAdminAttempt} from './AdminPending';
 type Variant={id:string;name:string;family_id:string;base_unit:string;active:boolean};
 type Lot={variant_id:string;qty_on_hand:number;qty_reserved:number;status:string;use_by:string|null};
 type Pending={id:string;variantId:string;quantity:number;reason:string;note:string};
@@ -31,10 +32,12 @@ export function InventoryAdjustmentPanel({onChanged}:{onChanged:()=>Promise<void
   if(!window.confirm(`¿Descontar ${amount} ${selected.base_unit} de ${selected.name}?`))return;
   const id=pending?.id||crypto.randomUUID();setPending({id,...payload});setBusy(true);
   try{
+   const attempt=await saveAdminAttempt('adjustment',{p_request_id:id,p_variant_id:variantId,p_quantity:amount,p_reason:reason,p_note:trimmed||null},`Ajuste de ${amount} ${selected.base_unit} de ${selected.name}`);
    const r=await supabase.rpc('admin_reduce_inventory',{p_request_id:id,p_variant_id:variantId,p_quantity:amount,p_reason:reason,p_note:trimmed||null});
    if(r.error)throw r.error;
+   await clearAdminAttempt(attempt);
    setPending(null);setQuantity('');setNote('');setNotice('Ajuste registrado.');await Promise.all([load(),onChanged()]);
-  }catch(e){setError((e instanceof Error?e.message:'No se pudo confirmar')+'. Si hubo un corte de conexión, verificá el historial antes de reintentar.');}
+  }catch(e){setError((e instanceof Error?e.message:'No se pudo confirmar')+'. Salí y volvé a entrar a Administración para verificar antes de reintentar.');}
   finally{setBusy(false)}
  }
  return <section className="admin-panel"><div className="admin-form">

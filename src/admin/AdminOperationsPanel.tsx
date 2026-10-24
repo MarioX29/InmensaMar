@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import './admin.css';
+import {saveAdminAttempt,clearAdminAttempt} from './AdminPending';
 type Variant={id:string;name:string;base_unit:string;price_cents:number;family_id:string;active:boolean};
 type Family={id:string;name:string};
 export function AdminOperationsPanel({onChanged}:{onChanged:()=>Promise<void>}){
@@ -18,11 +19,12 @@ export function AdminOperationsPanel({onChanged}:{onChanged:()=>Promise<void>}){
  if(mode==='price'&&(!price.trim()||!Number.isFinite(newPrice)||newPrice<0)){setError('Ingresá un precio válido.');return;}
  if(!window.confirm(mode==='purchase'?`¿Registrar ${num} ${selected.base_unit} de ${selected.name}?`:`¿Cambiar el precio de ${selected.name} a ${money(newPrice)}?`))return;
  setBusy(true);
- try {const r=mode==='purchase'?await supabase.rpc('admin_register_purchase',{p_request_id:requestId,p_variant_id:variantId,p_quantity:num,p_unit_cost_cents:cents,p_use_by:expiry||null}):await supabase.rpc('admin_update_price',{p_request_id:requestId,p_variant_id:variantId,p_new_price_cents:newPrice});
+ try {const payload=mode==='purchase'?{p_request_id:requestId,p_variant_id:variantId,p_quantity:num,p_unit_cost_cents:cents,p_use_by:expiry||null}:{p_request_id:requestId,p_variant_id:variantId,p_new_price_cents:newPrice};const attempt=await saveAdminAttempt(mode==='purchase'?'purchase':'price',payload,mode==='purchase'?`Compra de ${num} ${selected.base_unit} de ${selected.name}`:`Precio de ${selected.name}`);const r=mode==='purchase'?await supabase.rpc('admin_register_purchase',{p_request_id:requestId,p_variant_id:variantId,p_quantity:num,p_unit_cost_cents:cents,p_use_by:expiry||null}):await supabase.rpc('admin_update_price',{p_request_id:requestId,p_variant_id:variantId,p_new_price_cents:newPrice});
  if(r.error)throw r.error;
+ await clearAdminAttempt(attempt);
  setNotice(mode==='purchase'?'Compra registrada.':'Precio actualizado.');setRequestId(crypto.randomUUID());setQuantity('');setCost('');setPrice('');setExpiry('');
  if(mode==='price')setVariants(old=>old.map(v=>v.id===variantId?{...v,price_cents:newPrice}:v));await onChanged();
- }catch(e){setError(e instanceof Error?e.message:'No se pudo confirmar. No repitás con otro identificador hasta verificar la operación.');}finally{setBusy(false)}
+ }catch(e){setError((e instanceof Error?e.message:'No se pudo confirmar')+'. Salí y volvé a entrar a Administración para verificar el intento antes de repetir.');}finally{setBusy(false)}
  }
  return <section className="admin-panel"><div className="admin-switch"><button className={mode==='purchase'?'selected':''} onClick={()=>{setMode('purchase');setError('');setNotice('')}}>Registrar compra</button><button className={mode==='price'?'selected':''} onClick={()=>{setMode('price');setError('');setNotice('')}}>Actualizar precio</button></div>
  <div className="admin-form"><label>Producto<select value={variantId} onChange={e=>setVariantId(e.target.value)} disabled={busy}><option value="">Seleccionar producto</option>{variants.map(v=><option key={v.id} value={v.id}>{familyNames.get(v.family_id)||'Otros'} · {v.name}</option>)}</select></label>
