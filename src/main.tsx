@@ -55,6 +55,8 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
   const [quantityUnits,setQuantityUnits]=useState<Record<string,'lb'|'oz'>>({});
   const [quantityDrafts,setQuantityDrafts]=useState<Record<string,string>>({});
   const [recoveryConfirm,setRecoveryConfirm]=useState(false);
+  const [qaPauseAfterSale,setQaPauseAfterSale]=useState(false);
+  const qaEnabled=staffRole==='admin' && typeof window!=='undefined' && window.location.hostname==='develop.inmensamar.pages.dev';
   const [notice,setNotice]=useState('');
   const [receipt,setReceipt]=useState<Receipt|null>(null);
   const [loading,setLoading]=useState(true);
@@ -245,6 +247,12 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
         saleId=result.data as string;
         attempt.saleId=saleId;localStorage.setItem(pendingKey,JSON.stringify(attempt));setPending({...attempt});
       }
+      if(qaEnabled && qaPauseAfterSale){
+        setQaPauseAfterSale(false);
+        setError('QA: venta registrada, pago NO enviado. Usá Verificar operación pendiente y luego completá el cobro solo si recibiste el efectivo de prueba.');
+        await refresh();
+        return;
+      }
       const saleResult=await supabase.from('sales').select('total_cents').eq('id',saleId).single();
       if(saleResult.error)throw saleResult.error;
       const due=Number(saleResult.data.total_cents);
@@ -300,6 +308,7 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
       <input id="cash" type="number" inputMode="decimal" min="0" step="0.01" value={pending?(pending.cashCents/100).toFixed(2):cash} disabled={busy||!!pending} onChange={e=>setCash(e.target.value)} placeholder="0.00"/>
       <button className="exact-payment" type="button" disabled={busy||!!pending||!cart.length} onClick={setExactCash}>Pago exacto · {money(totalCents)}</button>
       {cash.trim()&&Number.isFinite(Number(cash))&&Math.round(Number(cash)*100)>=totalCents&&<small>Vuelto: {money(Math.round(Number(cash)*100)-totalCents)}</small>}
+      {qaEnabled&&!pending&&<label style={{display:'flex',gap:8,alignItems:'center',fontSize:13}}><input type="checkbox" checked={qaPauseAfterSale} disabled={busy} onChange={e=>setQaPauseAfterSale(e.target.checked)}/> QA: detener después de registrar venta (sin registrar pago)</label>}
       <button className="primary" disabled={busy||!!pending||!cart.length||staleLines.length>0} onClick={()=>void checkout()}><Check size={17}/>{busy?'Guardando…':'Registrar venta y cobro'}</button>
       <small>Operaciones de prueba conectadas a Supabase. Solo efectivo en esta versión.</small>
     </div>
