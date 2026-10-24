@@ -110,11 +110,19 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
   function change(p:Product,delta:number){updateCart(p,delta);}
   function removeLine(id:string){if(pending||busy)return;setLines(old=>old.filter(l=>l.id!==id));setError('');setNotice('');setReceipt(null);}
   const staleLines=cart.filter(({line,product})=>cartExceedsStock(line.qty,product.stock));
-  function clearAttempt(message: string) {
+  function clearAttempt(message: string, restoreCart = false) {
+    const recoveredLines: Line[] = restoreCart && pending
+      ? pending.items.map(item => ({id:item.variant_id, qty:item.quantity}))
+      : [];
     localStorage.removeItem(pendingKey);
     setPending(null);
-    setLines([]);
-    try { if(userId)localStorage.removeItem(cartDraftKey(userId)); } catch { /* ignore */ }
+    setLines(recoveredLines);
+    try {
+      if (userId) {
+        if (recoveredLines.length) localStorage.setItem(cartDraftKey(userId),JSON.stringify(recoveredLines));
+        else localStorage.removeItem(cartDraftKey(userId));
+      }
+    } catch { /* ignore */ }
     setCash('');
     setCartOpen(false);
     setError('');
@@ -154,7 +162,7 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
       if(result.error) throw result.error;
       if(result.data){setError('Esta venta sí existe en Supabase. No se puede descartar; verificá su cobro.');return;}
       if(!window.confirm('No se encontró la venta en Supabase. Solo descartá si confirmaste que el intento terminó y no existe un cobro externo. ¿Continuar?'))return;
-      clearAttempt('Intento local descartado. No se modificaron ventas ni inventario en Supabase.');
+      clearAttempt('Intento sin venta descartado. Los productos siguen en el carrito; revisá precios e inventario antes de cobrar.', true);
       await refresh();
     }catch(e){setError(friendlyError(errorMessage(e)));}
     finally{setCheckingPending(false);}
