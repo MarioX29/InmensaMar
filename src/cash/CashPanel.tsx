@@ -1,10 +1,11 @@
+import {CashWithdrawals} from './CashWithdrawals';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import './cash.css';
 type Position={user_id:string;display_name:string;collected_cents:number;handed_off_cents:number;remaining_cents:number};
 type Overview={cash_cents:number;transfer_reported_cents:number;pending_cents:number;open_issues:number;handed_off_cents:number};
 type CashDay={id:string;business_date:string;status:'open'|'closed';opening_float_cents:number;opened_at:string};
-type DayBalance={opening_cents:number;counter_sales_cents:number;received_handoffs_cents:number;expected_cents:number};
+type DayBalance={opening_cents:number;counter_sales_cents:number;received_handoffs_cents:number;withdrawals_cents:number;expected_cents:number};
 type DailyMovements={cash_cents:number;handoff_cents:number;transfer_cents:number};
 type Handoff={id:string;created_at:string;amount_cents:number;from_user_id:string;to_user_id:string;note:string|null};
 const money=(v:number)=>`Q ${(Number(v)/100).toFixed(2)}`;
@@ -73,12 +74,13 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
     // A forgotten close must not include payments from the following day.
     const cutoff=nextGuatemalaMidnightUtc(latest.business_date);
     const dayStart=guatemalaDayStartUtc(latest.business_date);
-    const [payments,received,userResult]=await Promise.all([
+    const [payments,received,userResult,withdrawals]=await Promise.all([
      supabase.from('sale_payments').select('amount_cents,sales!inner(status)').eq('method','cash').eq('status','received').eq('sales.status','completed').gte('created_at',dayStart).lt('created_at',cutoff),
      supabase.from('delivery_cash_handoffs').select('amount_cents,to_user_id').gte('created_at',dayStart).lt('created_at',cutoff),
-     supabase.auth.getUser()
+     supabase.auth.getUser(),
+     supabase.from('cash_withdrawals').select('amount_cents').eq('cash_day_id',latest.id)
     ]);
-    const calcIssue=payments.error||received.error||userResult.error;
+    const calcIssue=payments.error||received.error||userResult.error||withdrawals.error;
     const recipientId=userResult.data.user?.id;
     if(calcIssue||!recipientId){
      setDayBalance(null);setBalanceError(calcIssue?message(calcIssue):'No se pudo identificar al administrador de Caja.');
@@ -88,7 +90,8 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
      // Confirm this admin is the configured cash recipient before using for closing.
      const handed=(received.data||[]).filter(h=>h.to_user_id===recipientId).reduce((sum,h)=>sum+Number(h.amount_cents),0);
      const opening=Number(latest.opening_float_cents);
-     setDayBalance({opening_cents:opening,counter_sales_cents:counter,received_handoffs_cents:handed,expected_cents:opening+counter+handed});
+     const taken=(withdrawals.data||[]).reduce((sum,w)=>sum+Number(w.amount_cents),0);
+     setDayBalance({opening_cents:opening,counter_sales_cents:counter,received_handoffs_cents:handed,withdrawals_cents:taken,expected_cents:opening+counter+handed-taken});
      setBalanceError('');
     }
    }
@@ -153,9 +156,10 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
   }catch(e){setError(message(e)+' Verificá el historial antes de reintentar.');}
   finally{setBusy(false);}
  }
- if(staffRole!=='admin')return <section className="cash-panel">Acceso restringido a administradores.</section>;
+ if(staffRole==='driver')return <section className="cash-panel">Acceso restringido a Caja.</section>;
+ if(staffRole==='counter')return <section className="cash-panel"><div className="cash-head"><h2>Caja</h2></div><CashWithdrawals/></section>;
  return <section className="cash-panel">
-  <div className="cash-head"><div><h2>Caja</h2><p>Control de efectivo de entregas. No incluye ventas de mostrador ni gastos.</p></div><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
+  <div className="cash-head"><div><h2>Caja</h2><p>Control de Caja, entregas y retiros de efectivo.</p></div><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
   <div className="cash-card" aria-label="Jornada de Caja">
    <h3>Jornada de Caja</h3>
    {dayError?<p className="cash-error" role="alert">No se pudo consultar la apertura: {dayError}</p>:day?<>
@@ -170,12 +174,14 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
        <div><span>Sencillo inicial</span><strong>{money(dayBalance.opening_cents)}</strong></div>
        <div><span>Ventas en efectivo de la jornada</span><strong>{money(dayBalance.counter_sales_cents)}</strong></div>
        <div><span>Liquidaciones de la jornada</span><strong>{money(dayBalance.received_handoffs_cents)}</strong></div>
+       <div><span>Retiros de la jornada</span><strong>−{money(dayBalance.withdrawals_cents)}</strong></div>
       </div>
-      <small>Estimación para QA, limitada a la fecha comercial de Guatemala. No incluye retiros, gastos, devoluciones ni movimientos de sencillo. No usar aún como cierre definitivo.</small>
+      <small>Estimación para QA, limitada a la fecha comercial de Guatemala. Incluye retiros registrados. No contempla gastos, devoluciones ni conciliación de movimientos de sencillo. Solo QA.</small>
      </>:<p>Calculando efectivo esperado…</p>}
     </div>}
    </>:<p>No hay jornadas de Caja registradas.</p>}
   </div>
+  <CashWithdrawals onChanged={()=>void load()}/>
   {day?.status==='open'&&<div className="cash-card" aria-label="Simulador de cierre diario">
    <h3>Simular cierre diario</h3>
    <p>Ingresá el efectivo contado. Al cerrar, el dueño retira todo el efectivo; no queda sencillo en el local.</p>
@@ -185,7 +191,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
     <div><span>Diferencia (contado - esperado)</span><strong>{closingDifference===null?'—':`${closingDifference<0?'-':''}${money(Math.abs(closingDifference))}`}</strong></div>
     <div><span>Efectivo que retira el dueño</span><strong>{closingWithdrawal===null?'—':money(closingWithdrawal)}</strong></div>
    </div>:<p>Esperando el cálculo del efectivo esperado.</p>}
-   <small>Este cierre todavía está en QA: no contempla gastos, retiros ni todos los movimientos. Usar únicamente con jornadas ficticias verificadas.</small>
+   <small>Este cierre todavía está en QA: no contempla gastos, devoluciones ni todos los movimientos. Usar únicamente con jornadas ficticias verificadas.</small>
    <label>Para confirmar una jornada de prueba, escribí CERRAR<input value={closeConfirm} onChange={e=>setCloseConfirm(e.target.value)} placeholder="CERRAR" disabled={closeBusy||busy}/></label>
    <button className="cash-primary" disabled={!canClose} onClick={()=>void confirmClose()}>{closeBusy?'Confirmando…':'Confirmar cierre de prueba'}</button>
    {closeError&&<p className="cash-error" role="alert">{closeError}</p>}
@@ -223,6 +229,6 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    <small>Este registro no altera ventas ni cobros originales.</small>
   </div>
   <div className="cash-card"><h3>Últimas entregas de efectivo</h3>{!handoffs.length?<p>Todavía no hay entregas registradas.</p>:<div className="cash-table-wrap"><table><thead><tr><th>Fecha</th><th>De</th><th>Importe</th><th>Nota</th></tr></thead><tbody>{handoffs.map(h=><tr key={h.id}><td>{new Date(h.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala'})}</td><td>{positions.find(p=>p.user_id===h.from_user_id)?.display_name||h.from_user_id.slice(0,8)}</td><td>{money(h.amount_cents)}</td><td>{h.note||'—'}</td></tr>)}</tbody></table></div>}</div>
-  <p className="cash-footnote">QA: los movimientos diarios y los pendientes históricos son conceptos distintos. Los retiros del dueño aún no ajustan el saldo histórico en Supabase. No utilizar como conciliación contable definitiva.</p>
+  <p className="cash-footnote">QA: los movimientos diarios y los pendientes históricos son conceptos distintos. Los retiros de Caja no ajustan el saldo histórico de repartidores en Supabase. No utilizar como conciliación contable definitiva.</p>
  </section>;
 }
