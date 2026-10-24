@@ -27,3 +27,15 @@
 .cart-bottom{flex-wrap:wrap}
 
 @media(max-width:740px){.bottom-nav{grid-template-columns:repeat(5,1fr)}}
+
+/* Core 0.8: direct weight entry, exact cash, and payment recovery */
+.quantity-control{display:flex;align-items:center;gap:6px;min-width:0}
+.quantity-control .stepper input{width:64px;min-width:0;height:38px;border:0;border-left:1px solid #d9e2e2;border-right:1px solid #d9e2e2;text-align:center;font-size:16px;color:#142f43;background:#fff}
+.quantity-control select{height:38px;border:1px solid #d9e2e2;background:white;color:#142f43;padding:0 5px;font-size:13px}
+.exact-payment{border:1px solid #247b87;background:#e9f1f0;color:#165f6b;min-height:42px;font-size:14px;font-weight:700}
+.recover-payment{margin-top:12px;border-top:1px solid #d6dfdf;padding-top:12px;display:flex;flex-direction:column;gap:10px}
+.recover-payment p{margin:0;font-size:13px}
+.recover-payment label{display:flex;align-items:flex-start;gap:8px;font-size:13px}
+.recover-payment label input{width:18px;height:18px;flex-shrink:0}
+.recover-payment button{min-height:42px}
+@media(max-width:390px){.quantity-control .stepper input{width:48px}.cart-bottom{gap:8px}}

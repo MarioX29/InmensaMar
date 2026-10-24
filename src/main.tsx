@@ -52,6 +52,9 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
   const [category,setCategory]=useState('Todos');
   const [cartOpen,setCartOpen]=useState(false);
   const [cash,setCash]=useState('');
+  const [quantityUnits,setQuantityUnits]=useState<Record<string,'lb'|'oz'>>({});
+  const [quantityDrafts,setQuantityDrafts]=useState<Record<string,string>>({});
+  const [recoveryConfirm,setRecoveryConfirm]=useState(false);
   const [notice,setNotice]=useState('');
   const [receipt,setReceipt]=useState<Receipt|null>(null);
   const [loading,setLoading]=useState(true);
@@ -106,6 +109,22 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
     setLines(old=>next<=0?old.filter(l=>l.id!==p.id):old.some(l=>l.id===p.id)?old.map(l=>l.id===p.id?{...l,qty:next}:l):[...old,{id:p.id,qty:next}]);
     setNotice('');setError('');setReceipt(null);
   }
+  function setExactCash(){if(!pending&&!busy)setCash((totalCents/100).toFixed(2));}
+  function commitQuantity(p:Product, raw:string, selectedUnit:'lb'|'oz') {
+    if(pending||busy)return;
+    const entered=Number(raw.replace(',','.'));
+    const base=selectedUnit==='oz'&&p.unit==='lb'?entered/16:entered;
+    const normalized=Math.round(base*10000)/10000;
+    if(!raw.trim()||!Number.isFinite(entered)||entered<=0||normalized<=0||normalized>100000||
+       (p.unit!=='lb'&&!Number.isInteger(normalized))||normalized>p.stock){
+      setError('Cantidad inválida o superior al inventario disponible.');
+      setQuantityDrafts(old=>{const next={...old};delete next[p.id];return next;});
+      return;
+    }
+    setLines(old=>old.map(l=>l.id===p.id?{...l,qty:normalized}:l));
+    setQuantityDrafts(old=>{const next={...old};delete next[p.id];return next;});
+    setError('');setNotice('');setReceipt(null);
+  }
   function add(p:Product){updateCart(p,step(p));}
   function change(p:Product,delta:number){updateCart(p,delta);}
   function removeLine(id:string){if(pending||busy)return;setLines(old=>old.filter(l=>l.id!==id));setError('');setNotice('');setReceipt(null);}
@@ -123,7 +142,7 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
         else localStorage.removeItem(cartDraftKey(userId));
       }
     } catch { /* ignore */ }
-    setCash('');
+    setCash('');setRecoveryConfirm(false);
     setCartOpen(false);
     setError('');
     setNotice(message);
@@ -147,6 +166,7 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
         await refresh();
       }else{
         const updated={...pending,saleId:sale.id};
+        setRecoveryConfirm(false);
         localStorage.setItem(pendingKey,JSON.stringify(updated));setPending(updated);
         setError(`La venta existe, pero el cobro confirmado es ${money(paid)} de ${money(Number(sale.total_cents))}. No se liberó el bloqueo para evitar duplicaciones.`);
       }
@@ -166,6 +186,37 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
       await refresh();
     }catch(e){setError(friendlyError(errorMessage(e)));}
     finally{setCheckingPending(false);}
+  }
+  async function completeRecoveredPayment(){
+    if(!supabase||!pending||busy||checkingPending||processing.current||!recoveryConfirm)return;
+    processing.current=true;setBusy(true);setError('');setNotice('');
+    try {
+      const saleResult=await supabase.from('sales').select('id,total_cents,status').eq('request_id',pending.requestId).maybeSingle();
+      if(saleResult.error)throw saleResult.error;
+      const sale=saleResult.data;
+      if(!sale||sale.status!=='completed')throw new Error('No se encontró una venta completada. Verificá la operación.');
+      const payments=await supabase.from('sale_payments').select('request_id,amount_cents,status,method').eq('sale_id',sale.id);
+      if(payments.error)throw payments.error;
+      const allPayments=payments.data||[];
+      if(allPayments.some(p=>p.status!=='received'))throw new Error('Hay un pago pendiente de verificación. Contactá al administrador.');
+      const paid=allPayments.reduce((sum,p)=>sum+Number(p.amount_cents),0);
+      const due=Number(sale.total_cents)-paid;
+      if(due<=0){
+        if(due===0){clearAttempt('Venta y pago ya confirmados. No se registró otro cobro.');await refresh();return;}
+        throw new Error('El pago registrado supera el total. Revisá la venta.');
+      }
+      if(pending.cashCents<Number(sale.total_cents))throw new Error('El efectivo original no alcanza para el total de la venta. Revisá con el administrador.');
+      if(allPayments.some(p=>p.request_id===pending.paymentId))throw new Error('El identificador de pago ya fue utilizado. Verificá la operación.');
+      if(!window.confirm(`¿Confirmás que recibiste el efectivo y querés registrar únicamente el saldo pendiente de ${money(due)}?`))return;
+      const result=await supabase.rpc('record_sale_payment',{
+        p_request_id:pending.paymentId,p_sale_id:sale.id,p_method:'cash',p_amount_cents:due,p_pending_verification:false
+      });
+      if(result.error)throw result.error;
+      clearAttempt('Cobro pendiente registrado. Venta recuperada sin descontar inventario nuevamente.');
+      setReceipt({saleId:sale.id,totalCents:Number(sale.total_cents),cashCents:pending.cashCents});
+      await refresh();
+    }catch(e){setError(friendlyError(errorMessage(e)));}
+    finally{processing.current=false;setBusy(false);setRecoveryConfirm(false);}
   }
   async function checkout(){
     if(!supabase||busy||processing.current)return;
@@ -214,15 +265,51 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
   const filtered=products.filter(p=>(category==='Todos'||p.family===category)&&p.name.toLowerCase().includes(query.toLowerCase()));
   const allNav:[Page,string,React.ReactNode][]=[['vender','Vender',<ShoppingBasket size={19}/>],['pedidos','Pedidos',<ClipboardList size={19}/>],['reparto','Reparto',<Truck size={19}/>],['caja','Caja',<Wallet size={19}/>],['inventario','Inventario',<Package size={19}/>],['resumen','Resumen',<BarChart3 size={19}/>]];
   const nav = allNav.filter(([id])=>staffRole==='admin'||(staffRole==='driver'?id==='reparto':id!=='resumen'));
-  const cartPanel=<section className="cart"><div className="cart-title"><strong>Venta actual</strong><button className="mobile-only icon-btn" aria-label="Cerrar carrito" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>
-    {cart.length?cart.map(({line,product})=><div className="cart-line" key={line.id}><div><strong>{product.name}</strong><small>{money(product.priceCents)} / {units[product.unit]}</small></div>{line.qty>product.stock&&<small className="cart-stock-warning">Disponible: {product.stock} {units[product.unit]}. Reducí o quitá este producto.</small>}<div className="cart-bottom"><div className="stepper"><button disabled={busy||!!pending} aria-label="Restar" onClick={()=>change(product,-step(product))}><Minus size={15}/></button><span>{line.qty}</span><button disabled={busy||!!pending} aria-label="Sumar" onClick={()=>change(product,step(product))}><Plus size={15}/></button></div><b>{money(Math.round(line.qty*product.priceCents))}</b><button className="remove-line" type="button" disabled={busy||!!pending} onClick={()=>removeLine(product.id)} aria-label={`Quitar ${product.name}`}>Quitar</button></div></div>):<p className="empty">Agregá productos para comenzar.</p>}
-    <div className="cart-checkout"><div className="total"><span>Total estimado</span><strong>{money(totalCents)}</strong></div><label htmlFor="cash">Efectivo recibido (Q)</label><input id="cash" type="number" inputMode="decimal" min="0" step="0.01" value={pending?(pending.cashCents/100).toFixed(2):cash} disabled={busy||!!pending} onChange={e=>setCash(e.target.value)} placeholder="0.00"/><button className="primary" disabled={busy||!!pending||!cart.length||staleLines.length>0} onClick={()=>void checkout()}><Check size={17}/>{busy?'Guardando…':'Registrar venta y cobro'}</button><small>Operaciones de prueba conectadas a Supabase. Solo efectivo en esta versión.</small></div></section>;
+  const cartPanel=<section className="cart">
+    <div className="cart-title"><strong>Venta actual</strong><button className="mobile-only icon-btn" aria-label="Cerrar carrito" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>
+    {cart.length?cart.map(({line,product})=>{
+      const selectedUnit=product.unit==='lb'?(quantityUnits[product.id]||'lb'):'lb';
+      const displayed=selectedUnit==='oz'?line.qty*16:line.qty;
+      const displayValue=quantityDrafts[product.id]??String(Math.round(displayed*10000)/10000);
+      return <div className="cart-line" key={line.id}>
+        <div><strong>{product.name}</strong><small>{money(product.priceCents)} / {units[product.unit]}</small></div>
+        {line.qty>product.stock&&<small className="cart-stock-warning">Disponible: {product.stock} {units[product.unit]}. Reducí o quitá este producto.</small>}
+        <div className="cart-bottom">
+          <div className="quantity-control">
+            <div className="stepper">
+              <button type="button" disabled={busy||!!pending} aria-label="Restar" onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,-step(product));}}><Minus size={15}/></button>
+              <input aria-label={`Cantidad de ${product.name}`} type="text" inputMode="decimal" value={displayValue} disabled={busy||!!pending}
+                onChange={e=>setQuantityDrafts(old=>({...old,[product.id]:e.target.value}))}
+                onBlur={()=>{if(quantityDrafts[product.id]!==undefined)commitQuantity(product,quantityDrafts[product.id],selectedUnit);}}
+                onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} />
+              <button type="button" disabled={busy||!!pending} aria-label="Sumar" onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,step(product));}}><Plus size={15}/></button>
+            </div>
+            {product.unit==='lb'?<select aria-label={`Unidad de ${product.name}`} value={selectedUnit} disabled={busy||!!pending}
+              onChange={e=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});setQuantityUnits(old=>({...old,[product.id]:e.target.value as 'lb'|'oz'}));}}>
+              <option value="lb">lb</option><option value="oz">oz</option>
+            </select>:<small>{units[product.unit]}</small>}
+          </div>
+          <b>{money(Math.round(line.qty*product.priceCents))}</b>
+          <button className="remove-line" type="button" disabled={busy||!!pending} onClick={()=>removeLine(product.id)} aria-label={`Quitar ${product.name}`}>Quitar</button>
+        </div>
+      </div>;
+    }):<p className="empty">Agregá productos para comenzar.</p>}
+    <div className="cart-checkout">
+      <div className="total"><span>Total estimado</span><strong>{money(totalCents)}</strong></div>
+      <label htmlFor="cash">Efectivo recibido (Q)</label>
+      <input id="cash" type="number" inputMode="decimal" min="0" step="0.01" value={pending?(pending.cashCents/100).toFixed(2):cash} disabled={busy||!!pending} onChange={e=>setCash(e.target.value)} placeholder="0.00"/>
+      <button className="exact-payment" type="button" disabled={busy||!!pending||!cart.length} onClick={setExactCash}>Pago exacto · {money(totalCents)}</button>
+      {cash.trim()&&Number.isFinite(Number(cash))&&Math.round(Number(cash)*100)>=totalCents&&<small>Vuelto: {money(Math.round(Number(cash)*100)-totalCents)}</small>}
+      <button className="primary" disabled={busy||!!pending||!cart.length||staleLines.length>0} onClick={()=>void checkout()}><Check size={17}/>{busy?'Guardando…':'Registrar venta y cobro'}</button>
+      <small>Operaciones de prueba conectadas a Supabase. Solo efectivo en esta versión.</small>
+    </div>
+  </section>;
   return <div className="shell"><header className="top"><div className="brand"><span className="mark">IM</span><div><strong>Inmensa Mar</strong><small>Operación</small></div></div><div className="top-actions"><span className="demo">ENTORNO DE PRUEBA</span><NotificationSetup/></div></header><div className="workspace"><aside className="sidebar"><div className="side-label">OPERACIÓN</div>{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}{label}</button>)}</aside><main className="main">
     <CashOpening staffRole={staffRole}/>
     <div className="heading heading-actions"><div><h1>{page==='vender'?'Nueva venta':page==='inventario'?'Inventario':page==='resumen'?'Resumen':page==='reparto'?'Reparto':page==='caja'?'Caja':'Pedidos'}</h1><p>{page==='vender'?'Seleccioná productos y registrá el cobro en Supabase.':page==='inventario'?'Existencias disponibles por variante.':page==='resumen'?'Ventas registradas en la base de datos.':page==='reparto'?'Asignación de rutas y pedidos listos.':page==='caja'?'Control de efectivo y liquidaciones de reparto.':'Recepción y preparación de pedidos.'}</p></div><button className="refresh-btn" onClick={()=>void refresh()} disabled={busy}><RefreshCw size={16}/> Actualizar</button></div>
     {error&&<div className="error-panel" role="alert">{error}<button className="dismiss-error" type="button" onClick={()=>setError('')} aria-label="Cerrar error"><X size={16}/></button>{pending&&<p>Hay una operación pendiente de verificar. No iniciés otra venta hasta resolverla.</p>}</div>}
     {receipt&&<div className="receipt-panel" role="status"><strong>Venta y cobro confirmados</strong><span>Venta #{receipt.saleId.slice(0,8)} · Total {money(receipt.totalCents)} · Efectivo {money(receipt.cashCents)} · Vuelto {money(receipt.cashCents-receipt.totalCents)}</span><button className="dismiss-error" type="button" aria-label="Cerrar confirmación" onClick={()=>setReceipt(null)}><X size={16}/></button></div>}
-    {pending&&<div className="warning-panel">Hay una operación pendiente. Verificá primero su estado en Supabase. <button type="button" disabled={busy||checkingPending} onClick={()=>void verifyPending()}>{checkingPending?'Verificando…':'Verificar operación pendiente'}</button> <button type="button" disabled={busy||checkingPending} onClick={()=>void discardUnregisteredPending()}>Descartar intento sin venta</button></div>}
+    {pending&&<div className="warning-panel">Hay una operación pendiente. Verificá primero su estado en Supabase. <button type="button" disabled={busy||checkingPending} onClick={()=>void verifyPending()}>{checkingPending?'Verificando…':'Verificar operación pendiente'}</button> <button type="button" disabled={busy||checkingPending} onClick={()=>void discardUnregisteredPending()}>Descartar intento sin venta</button>{pending.saleId&&<div className="recover-payment"><strong>Venta existente · Cobro por revisar</strong><p>Solo completá el pago si ya recibiste el efectivo. No se volverá a registrar la venta ni a descontar inventario.</p><label><input type="checkbox" checked={recoveryConfirm} disabled={busy||checkingPending} onChange={e=>setRecoveryConfirm(e.target.checked)}/> Confirmo que recibí el efectivo indicado en el intento original.</label><button type="button" disabled={!recoveryConfirm||busy||checkingPending} onClick={()=>void completeRecoveredPayment()}>Completar cobro pendiente</button></div>}</div>}
     {page==='pedidos'?<OrdersPanel staffRole={staffRole}/>:page==='reparto'?<DeliveryPanel staffRole={staffRole}/>:page==='caja'?<CashPanel staffRole={staffRole}/>:loading?<p className="empty">Cargando datos de Supabase…</p>:page==='vender'?<div className="pos"><section className="catalog"><div className="search"><Search size={18}/><input aria-label="Buscar productos" placeholder="Buscar producto" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="filters">{categories.map(c=><button key={c} className={category===c?'selected':''} onClick={()=>setCategory(c)}>{c}</button>)}</div><div className="product-list">{filtered.map(p=><div className="product" key={p.id}><div className="product-info"><strong>{p.name}</strong><small>{p.stock<=0?'Agotado':`${p.stock} ${units[p.unit]} disponibles`}</small></div><div className="product-action"><b>{money(p.priceCents)}<small>/{units[p.unit]}</small></b><button aria-label={`Agregar ${p.name}`} disabled={busy||!!pending||p.stock<=0} onClick={()=>add(p)}><Plus size={19}/></button></div></div>)}{!filtered.length&&<p className="empty">No hay productos disponibles. Cargá datos de prueba en Supabase.</p>}</div></section><div className="desktop-cart">{cartPanel}</div></div>:page==='inventario'?<div className="table-wrap"><table><thead><tr><th>Producto</th><th>Unidad</th><th>Precio</th><th>Disponible</th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td>{p.name}</td><td>{units[p.unit]}</td><td>{money(p.priceCents)}</td><td>{p.stock}</td></tr>)}</tbody></table></div>:page==='resumen'?<><div className="stats"><div><small>Últimas ventas</small><strong>{sales.length}</strong></div><div><small>Total registrado (últimas 100)</small><strong>{money(sales.reduce((s,x)=>s+Number(x.total_cents),0))}</strong></div></div><div className="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Total</th></tr></thead><tbody>{sales.map(s=><tr key={s.id}><td>{s.id.slice(0,8)}</td><td>{new Date(s.created_at).toLocaleString('es-GT')}</td><td>{money(Number(s.total_cents))}</td></tr>)}</tbody></table>{!sales.length&&<p className="empty">No hay ventas todavía.</p>}</div></>:<div className="placeholder"><ClipboardList size={28}/><strong>Próxima fase</strong><p>Los pedidos online todavía no están habilitados.</p></div>}
     </main></div>{page==='vender'&&(lines.length>0||pending)&&<button className="mobile-cart-trigger" onClick={()=>setCartOpen(true)}><span>{pending?'Cobro pendiente':`Venta actual · ${lines.length} productos`}</span><strong>{money(totalCents)} →</strong></button>}{cartOpen&&page==='vender'&&<div className="drawer-backdrop" onClick={()=>setCartOpen(false)}><div className="drawer" onClick={e=>e.stopPropagation()}>{cartPanel}</div></div>}<nav className="bottom-nav">{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}<span>{label}</span></button>)}</nav>{notice&&<div className="notice" role="status"><span>{notice}</span><button aria-label="Cerrar aviso" onClick={()=>setNotice('')}><X size={16}/></button></div>}</div>;
 }
