@@ -3,6 +3,21 @@ import {supabase} from '../lib/supabase';
 type Kind='purchase'|'price'|'catalog'|'adjustment';
 type Entry={id:string;kind:Kind;at:string;title:string;detail:string;actor:string};
 const money=(c:number)=>`Q ${(c/100).toFixed(2)}`;
+const catalogDetail=(action:string, raw:unknown):string=>{
+ let value:unknown=raw;
+ if(typeof value==='string') {try {value=JSON.parse(value)} catch {value=null}}
+ const data=value && typeof value==='object' ? value as Record<string,unknown> : null;
+ if(action==='set_variant_active'){
+  if(data?.active===true || data?.active==='true')return 'Reactivado';
+  if(data?.active===false || data?.active==='false')return 'Desactivado';
+  return 'Estado actualizado';
+ }
+ if(action==='create_variant')return 'Presentación creada';
+ if(action==='create_family')return 'Producto creado';
+ if(action==='rename_variant')return 'Presentación renombrada';
+ if(action==='rename_family')return 'Producto renombrado';
+ return 'Catálogo actualizado';
+};
 const date=(s:string)=>new Date(s).toLocaleString('es-GT',{timeZone:'America/Guatemala',dateStyle:'short',timeStyle:'short'});
 export function AdminHistoryPanel(){
  const [kind,setKind]=useState<'all'|Kind>('all');const [rows,setRows]=useState<Entry[]>([]);
@@ -25,9 +40,9 @@ export function AdminHistoryPanel(){
   const name=(id:string|null)=>{const x=id?variants.get(id):undefined;return x?`${families.get(x.family_id)||'Producto'} · ${x.name}`:'Producto anterior';};
   const who=(id:string|null)=>id?people.get(id)||'Personal':'Sistema';
   const entries:Entry[]=[
-   ...(p.data||[]).map(x=>({id:'p'+x.id,kind:'purchase' as const,at:x.created_at,title:`Compra · ${name(x.variant_id)}`,detail:`+${x.quantity} ${variants.get(x.variant_id)?.base_unit||''} · ${money(x.unit_cost_cents)} por unidad base`,actor:who(x.actor_id)})),
+   ...(p.data||[]).map(x=>({id:'p'+x.id,kind:'purchase' as const,at:x.created_at,title:`Compra · ${name(x.variant_id)}`,detail:`+${x.quantity} ${variants.get(x.variant_id)?.base_unit||''} · ${money(x.unit_cost_cents)}/${variants.get(x.variant_id)?.base_unit||'unidad'}`,actor:who(x.actor_id)})),
    ...(pr.data||[]).map(x=>({id:'r'+x.id,kind:'price' as const,at:x.created_at,title:`Precio · ${name(x.variant_id)}`,detail:`${money(x.old_price_cents)} → ${money(x.new_price_cents)}`,actor:who(x.actor_id)})),
-   ...(c.data||[]).map(x=>({id:'c'+x.id,kind:'catalog' as const,at:x.created_at,title:`Catálogo · ${x.variant_id?name(x.variant_id):families.get(x.family_id)||'Familia'}`,detail:x.action==='set_variant_active'?((x.new_value as {active?:boolean}|null)?.active?'Reactivado':'Desactivado'):x.action.replaceAll('_',' '),actor:who(x.actor_id)})),
+   ...(c.data||[]).map(x=>({id:'c'+x.id,kind:'catalog' as const,at:x.created_at,title:`Catálogo · ${x.variant_id?name(x.variant_id):families.get(x.family_id)||'Familia'}`,detail:catalogDetail(x.action,x.new_value),actor:who(x.actor_id)})),
    ...(m.data||[]).map(x=>({id:'m'+x.id,kind:'adjustment' as const,at:x.created_at,title:`Ajuste · ${name(lots.get(x.lot_id)||null)}`,detail:`${x.qty_change} ${variants.get(lots.get(x.lot_id)||'')?.base_unit||''} · ${x.reason==='waste'?'Merma':x.reason==='count_difference'?'Diferencia de conteo':'Otro motivo'}`,actor:who(x.actor_id)}))
   ];setRows(entries.sort((a,b)=>b.at.localeCompare(a.at)).slice(0,100));
  }catch(e){setError(e instanceof Error?e.message:'No se pudo cargar el historial.')}finally{setLoading(false)}

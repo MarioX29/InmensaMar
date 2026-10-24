@@ -1,2 +1,9 @@
 .admin-panel{max-width:650px}.admin-switch{display:flex;gap:8px;margin-bottom:20px}.admin-switch button{flex:1;min-height:48px;border:1px solid #cbd9d9;background:#fff;color:#142f43;font-weight:700}.admin-switch button.selected{background:#247b87;color:#fff}.admin-form{background:white;border:1px solid #dce4e4;padding:20px;display:flex;flex-direction:column;gap:16px}.admin-form label{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:650}.admin-form input,.admin-form select{width:100%;min-height:46px;padding:10px;border:1px solid #cbd9d9;border-radius:3px;font-size:16px;background:white}.admin-form .primary{min-height:48px}.admin-hint{margin:0;color:#526873;font-size:13px}.admin-error{color:#a02e26}.admin-ok{color:#176448}.admin-form small{color:#526873;line-height:1.5}
 .admin-switch-four{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.admin-history{max-width:700px}.admin-history-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.admin-history-head button{min-height:42px}.admin-history label{display:flex;flex-direction:column;gap:6px;margin:12px 0}.admin-history select{min-height:44px;font-size:16px}.admin-history-list{display:flex;flex-direction:column;gap:8px;margin:16px 0}.admin-history-item{padding:12px 14px;background:#fff;border:1px solid #dce4e4;border-radius:8px}.admin-history-item p{margin:6px 0;color:#344e5b}.admin-history-item small{color:#526873}
+
+/* Historial compacto: lectura rápida en móvil */
+.admin-history-list{gap:6px;margin:12px 0}
+.admin-history-item{padding:10px 12px;border-radius:7px}
+.admin-history-item strong{font-size:14px;line-height:1.3}
+.admin-history-item p{margin:3px 0;font-size:13px;line-height:1.35}
+.admin-history-item small{font-size:12px;line-height:1.35}
