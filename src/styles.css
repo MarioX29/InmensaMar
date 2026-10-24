@@ -39,3 +39,5 @@
 .recover-payment label input{width:18px;height:18px;flex-shrink:0}
 .recover-payment button{min-height:42px}
 @media(max-width:390px){.quantity-control .stepper input{width:48px}.cart-bottom{gap:8px}}
+
+@media(max-width:740px){.bottom-nav{grid-template-columns:repeat(5,1fr);overflow-x:auto}.bottom-nav button{min-width:68px}}
