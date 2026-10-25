@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './delivery.css';
+import { DeliveryReturnsPanel } from './DeliveryReturnsPanel';
 type Driver={user_id:string;display_name:string};
 type Route={id:string;label:string;driver_id:string;created_at:string;dispatched_at:string|null;status:string};
 type Order={id:string;customer_name:string;total_cents:number;status?:string};
@@ -23,6 +24,9 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [readyDriver,setReadyDriver]=useState<ReadyOrder[]>([]);
  const [driverSelected,setDriverSelected]=useState<string[]>([]);
  const [driverPending,setDriverPending]=useState<{requestId:string;orderIds:string[]}|null>(()=>{try{return JSON.parse(localStorage.getItem('im-driver-outing-pending')||'null');}catch{return null;}});
+ const [failureReason,setFailureReason]=useState('absent');
+ const [failureChoice,setFailureChoice]=useState<{orderId:string;action:'retry'|'return'}|null>(null);
+ const [failurePending,setFailurePending]=useState<{requestId:string;orderId:string;action:'retry'|'return';reason:string}|null>(()=>{try{return JSON.parse(localStorage.getItem('im-failure-pending')||'null');}catch{return null;}});
  const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
  const [paymentMethod,setPaymentMethod]=useState<'cash'|'transfer_reported'|'pending'>('cash');
  const [tendered,setTendered]=useState('');
@@ -184,6 +188,17 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   }catch(e){setError(errorText(e)+' Verificá antes de reintentar.');}
   finally{setBusy(false);}
  }
+ async function reportFailure(){
+  if(!supabase||busy)return;
+  const p=failurePending||(failureChoice?{requestId:crypto.randomUUID(),orderId:failureChoice.orderId,action:failureChoice.action,reason:failureReason}:null);
+  if(!p)return;
+  if(!failurePending){localStorage.setItem('im-failure-pending',JSON.stringify(p));setFailurePending(p);}
+  setBusy(true);setError('');
+  try{const {error:e}=await supabase.rpc('report_delivery_failure',{p_order_id:p.orderId,p_request_id:p.requestId,p_action:p.action,p_reason:p.reason});
+   if(e){setError(errorText(e)+' Verificá la misma solicitud antes de repetir.');return;}
+   localStorage.removeItem('im-failure-pending');setFailurePending(null);setFailureChoice(null);setNotice(p.action==='retry'?'Intento registrado. Podés volver a entregar más tarde.':'Regreso solicitado. Mostrador debe confirmar la mercadería.');await load();
+  }catch(e){setError(errorText(e)+' No iniciés otra operación.');}finally{setBusy(false);}
+ }
  const hasPayment=(orderId:string)=>paymentEvents.some(e=>e.order_id===orderId&&e.event_kind==='payment');
  const pendingLate=orders.filter(o=>o.status==='delivered'&&!hasPayment(o.id)&&paymentEvents.some(e=>e.order_id===o.id&&e.event_kind==='pending'));
  return <section className="delivery-module">
@@ -295,9 +310,12 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    <strong>{o.stop_order}. {o.customer_name}</strong><small>{o.route_label} · {o.delivery_address}</small><small>{o.customer_phone} · {money(o.total_cents)}</small>
    <div className="driver-links"><a target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}>Google Maps</a><a target="_blank" rel="noopener noreferrer" href={`https://waze.com/ul?q=${encodeURIComponent(o.delivery_address)}&navigate=yes`}>Waze</a></div>
    {staffRole==='driver'&&orderStates[o.order_id]==='out_for_delivery'&&<div className="driver-order-actions"><button disabled={busy} onClick={()=>void reorderDriver(o,-1)}>Subir</button><button disabled={busy} onClick={()=>void reorderDriver(o,1)}>Bajar</button></div>}
+   {orderStates[o.order_id]==='out_for_delivery'&&<button type="button" disabled={busy||!!failurePending} onClick={()=>{setFailureReason('absent');setFailureChoice({orderId:o.order_id,action:'retry'});}}>No se pudo entregar</button>}
    {orderStates[o.order_id]==='out_for_delivery'&&<button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:o.order_id});}}>Marcar entregado</button>}
   </div>)}</section>}
 
+  {staffRole!=='driver'&&view==='active'&&<DeliveryReturnsPanel/>}
+  {(failureChoice||failurePending)&&staffRole==='driver'&&<div className="delivery-confirm-backdrop"><div className="delivery-confirm-dialog" role="dialog" aria-modal="true" aria-label="Entrega fallida"><h3>No se pudo entregar</h3><p>Registrá el motivo y decidí si vas a intentar más tarde o regresar al local.</p><label>Motivo<select value={failurePending?.reason||failureReason} disabled={busy||!!failurePending} onChange={e=>setFailureReason(e.target.value)}><option value="absent">Cliente ausente</option><option value="no_answer">No responde</option><option value="wrong_address">Dirección incorrecta</option><option value="rejected">Cliente rechazó</option><option value="other">Otro</option></select></label><div className="delivery-confirm-actions"><button disabled={busy||!!failurePending} onClick={()=>setFailureChoice(null)}>Volver</button><button disabled={busy||!!failurePending} onClick={()=>setFailureChoice(v=>v?{...v,action:'retry'}:v)}>Intentar más tarde</button><button disabled={busy||!!failurePending} onClick={()=>setFailureChoice(v=>v?{...v,action:'return'}:v)}>Regresar al local</button></div><p>Acción: {failurePending?.action==='return'||!failurePending&&failureChoice?.action==='return'?'Regresar al local':'Intentar más tarde'}</p><button className="delivery-primary" disabled={busy} onClick={()=>void reportFailure()}>{failurePending?'Verificar misma operación':'Confirmar'}</button></div></div>}
   {staffRole==='driver'&&mine.length>0&&<section className="delivery-card"><h2>Resumen de cobros</h2>
    <p className="delivery-subtitle">Montos de mis pedidos visibles. Las transferencias reportadas requieren verificación.</p>
    <div className="delivery-summary"><span>Pedidos en mi lista</span><strong>{mine.length}</strong></div>
