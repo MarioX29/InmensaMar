@@ -72,3 +72,7 @@
 .delivery-payment-cash small{color:#a33a2c}
 .delivery-payment-note{font-size:14px;line-height:1.5;background:#f1f6f6;border-radius:8px;padding:12px;margin:0}
 @media(max-width:480px){.delivery-confirm-actions{flex-wrap:wrap}.delivery-confirm-actions button{flex:1}}
+
+/* Driver self-dispatch QA */
+.driver-links,.driver-order-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.driver-links a,.driver-order-actions button{min-height:40px;padding:8px 12px;border:1px solid #85c7c1;border-radius:9px;background:#f7f5ef;color:#142f43;font:inherit}

@@ -6,6 +6,7 @@ type Route={id:string;label:string;driver_id:string;created_at:string;dispatched
 type Order={id:string;customer_name:string;total_cents:number;status?:string};
 type Assignment={order_id:string;route_id:string;stop_order:number};
 type PaymentEvent={order_id:string;event_kind:'pending'|'payment';method:string;amount_cents:number;verified_at:string|null};
+type ReadyOrder={order_id:string;customer_name:string;delivery_address:string;total_cents:number};
 type DriverOrder={order_id:string;route_id:string;route_label:string;customer_name:string;customer_phone:string;delivery_address:string;total_cents:number;stop_order:number;order_status:string};
 const money=(n:number)=>`Q ${(n/100).toFixed(2)}`;
 const GUATEMALA_TZ='America/Guatemala';
@@ -19,6 +20,9 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [orders,setOrders]=useState<Order[]>([]);
  const [assignments,setAssignments]=useState<Assignment[]>([]);
  const [mine,setMine]=useState<DriverOrder[]>([]);
+ const [readyDriver,setReadyDriver]=useState<ReadyOrder[]>([]);
+ const [driverSelected,setDriverSelected]=useState<string[]>([]);
+ const [driverPending,setDriverPending]=useState<{requestId:string;orderIds:string[]}|null>(()=>{try{return JSON.parse(localStorage.getItem('im-driver-outing-pending')||'null');}catch{return null;}});
  const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
  const [paymentMethod,setPaymentMethod]=useState<'cash'|'transfer_reported'|'pending'>('cash');
  const [tendered,setTendered]=useState('');
@@ -60,6 +64,9 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    const assigned=(result.data||[]) as DriverOrder[];
    setMine(assigned);
    setOrderStates(Object.fromEntries(assigned.map(x=>[x.order_id,x.order_status])));
+   const readyResult=await supabase.rpc('driver_ready_orders');
+   if(readyResult.error){setError(`No se pudieron consultar pedidos listos: ${errorText(readyResult.error)}`);return;}
+   setReadyDriver((readyResult.data||[]) as ReadyOrder[]);
    const payments=await supabase.from('delivery_payment_events').select('order_id,event_kind,method,amount_cents,verified_at');
    if(payments.error){setError(`Entregas actualizadas, pero falló la consulta de pagos: ${errorText(payments.error)}`);return;}
    setPaymentEvents(payments.data||[]);
@@ -112,6 +119,30 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   }catch(e){setError(`No se pudo confirmar la salida: ${errorText(e)}. No repitás con otra solicitud.`);}
   finally{setBusy(false);}
  }
+ async function takeDriverOrders(){
+  if(!supabase||busy)return;
+  const ids=driverPending?.orderIds||driverSelected;
+  if(!ids.length)return;
+  const pending=driverPending||{requestId:crypto.randomUUID(),orderIds:[...ids]};
+  if(!driverPending){localStorage.setItem('im-driver-outing-pending',JSON.stringify(pending));setDriverPending(pending);}
+  setBusy(true);setError('');setNotice('');
+  try{
+   const {data,error:e}=await supabase.rpc('driver_take_ready_orders',{p_request_id:pending.requestId,p_order_ids:pending.orderIds});
+   if(e){setError(`No se pudo confirmar la salida: ${errorText(e)}. Si hubo un corte de conexión, verificá la solicitud original antes de descartarla.`);return;}
+   localStorage.removeItem('im-driver-outing-pending');setDriverPending(null);setDriverSelected([]);
+   setNotice(`Salida confirmada (${String(data).slice(0,8)}). Ya podés repartir.`);await load();
+  }catch(e){setError(`No pudimos confirmar la salida: ${errorText(e)}. No repitás con una solicitud nueva.`);}
+  finally{setBusy(false);}
+ }
+ async function reorderDriver(order:DriverOrder,direction:number){
+  if(!supabase||busy)return;
+  const list=mine.filter(x=>x.route_id===order.route_id).sort((a,b)=>a.stop_order-b.stop_order);
+  const ids=list.map(x=>x.order_id),i=ids.indexOf(order.order_id),j=i+direction;
+  if(i<0||j<0||j>=ids.length)return;
+  [ids[i],ids[j]]=[ids[j],ids[i]];setBusy(true);
+  const {error:e}=await supabase.rpc('driver_reorder_active_route',{p_route_id:order.route_id,p_order_ids:ids});
+  if(e)setError(errorText(e));else await load();setBusy(false);
+ }
  async function move(routeId:string,orderId:string,direction:number){
   if(!supabase||busy)return;
   const ids=assignments.filter(a=>a.route_id===routeId).sort((a,b)=>a.stop_order-b.stop_order).map(a=>a.order_id);
@@ -159,6 +190,17 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   <p className="delivery-warning">Confirmar salida asigna los pedidos y registra su salida física. Al marcar entregado registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada no está verificada.</p>
   {error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
+  {staffRole==='driver'&&<section className="delivery-card">
+   <div className="delivery-card-head"><h2>Pedidos listos para llevar</h2><button disabled={busy} onClick={()=>void load()}>Actualizar</button></div>
+   <p className="delivery-subtitle">Elegí los pedidos y salí directo. Si otro repartidor los toma, Supabase rechazará toda la salida.</p>
+   {readyDriver.length===0?<p>No hay pedidos disponibles.</p>:readyDriver.map(o=><label className="delivery-order" key={o.order_id}>
+    <input type="checkbox" checked={driverSelected.includes(o.order_id)} disabled={busy||!!driverPending} onChange={e=>setDriverSelected(old=>e.target.checked?[...old,o.order_id]:old.filter(id=>id!==o.order_id))}/>
+    <span><strong>{o.customer_name}</strong><small>{o.delivery_address}</small></span><b>{money(o.total_cents)}</b>
+   </label>)}
+   <div className="delivery-summary"><span>{(driverPending?.orderIds||driverSelected).length} seleccionados</span><strong>{money(readyDriver.filter(o=>(driverPending?.orderIds||driverSelected).includes(o.order_id)).reduce((sum,o)=>sum+o.total_cents,0))}</strong></div>
+   {driverPending&&<p role="alert" className="delivery-warning">Operación por verificar. No iniciés otra salida. Reintentá con la misma solicitud para comprobar si ya se registró.</p>}
+   <button className="delivery-primary" disabled={busy||!(driverPending?.orderIds||driverSelected).length} onClick={()=>void takeDriverOrders()}>{busy?'Procesando…':driverPending?'Verificar misma salida':'Tomar pedidos y salir'}</button>
+  </section>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>En reparto</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
   {staffRole!=='driver'&&view==='active'&&<section className="delivery-card">
    <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
@@ -251,10 +293,19 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   </section>}
   {mine.length>0&&(staffRole==='driver'||view==='active')&&<section className="delivery-card"><h2>Mis entregas asignadas</h2>{mine.map(o=><div className="delivery-route" key={o.order_id}>
    <strong>{o.stop_order}. {o.customer_name}</strong><small>{o.route_label} · {o.delivery_address}</small><small>{o.customer_phone} · {money(o.total_cents)}</small>
-   <a target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}>Abrir dirección en Maps</a>
+   <div className="driver-links"><a target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}>Google Maps</a><a target="_blank" rel="noopener noreferrer" href={`https://waze.com/ul?q=${encodeURIComponent(o.delivery_address)}&navigate=yes`}>Waze</a></div>
+   {staffRole==='driver'&&orderStates[o.order_id]==='out_for_delivery'&&<div className="driver-order-actions"><button disabled={busy} onClick={()=>void reorderDriver(o,-1)}>Subir</button><button disabled={busy} onClick={()=>void reorderDriver(o,1)}>Bajar</button></div>}
    {orderStates[o.order_id]==='out_for_delivery'&&<button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:o.order_id});}}>Marcar entregado</button>}
   </div>)}</section>}
 
+  {staffRole==='driver'&&mine.length>0&&<section className="delivery-card"><h2>Resumen de cobros</h2>
+   <p className="delivery-subtitle">Montos de mis pedidos visibles. Las transferencias reportadas requieren verificación.</p>
+   <div className="delivery-summary"><span>Pedidos en mi lista</span><strong>{mine.length}</strong></div>
+   <div className="delivery-summary"><span>Valor de pedidos</span><strong>{money(mine.reduce((n,o)=>n+o.total_cents,0))}</strong></div>
+   <div className="delivery-summary"><span>Efectivo registrado</span><strong>{money(mine.reduce((n,o)=>n+paymentEvents.filter(e=>e.order_id===o.order_id&&e.event_kind==='payment'&&e.method==='cash').reduce((a,e)=>a+e.amount_cents,0),0))}</strong></div>
+   <div className="delivery-summary"><span>Transferencias reportadas</span><strong>{money(mine.reduce((n,o)=>n+paymentEvents.filter(e=>e.order_id===o.order_id&&e.event_kind==='payment'&&e.method==='transfer_reported').reduce((a,e)=>a+e.amount_cents,0),0))}</strong></div>
+   <p className="delivery-subtitle">Este resumen no sustituye la liquidación de efectivo y no incluye entregas fuera de la lista actual.</p>
+  </section>}
   {staffRole!=='driver'&&view==='active'&&pendingLate.length>0&&<section className="delivery-card"><h2>Cobros pendientes después de la entrega</h2><p className="delivery-subtitle">Solo pedidos entregados con un pendiente registrado.</p>{pendingLate.map(o=><div className="delivery-route" key={o.id}><strong>Pedido #{o.id.slice(0,8)} · {o.customer_name}</strong><small>{money(o.total_cents)} pendiente</small><button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:o.id});}}>Registrar cobro posterior</button></div>)}</section>}
   {confirm&&<div className="delivery-confirm-backdrop" role="presentation">
    <div className="delivery-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delivery-confirm-title">
