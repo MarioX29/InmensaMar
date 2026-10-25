@@ -1,3 +1,4 @@
+import {FloatConfirm} from './FloatConfirm';
 import {ErrandReview} from './ErrandReview';
 import {CashWithdrawals} from './CashWithdrawals';
 import {useCallback,useEffect,useRef,useState} from 'react';
@@ -183,6 +184,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    </>:<p>No hay jornadas de Caja registradas.</p>}
   </div>
   <CashWithdrawals onChanged={()=>void load()}/>
+  <FloatConfirm/>
   <ErrandReview/>
   {day?.status==='open'&&<div className="cash-card" aria-label="Simulador de cierre diario">
    <h3>Simular cierre diario</h3>
