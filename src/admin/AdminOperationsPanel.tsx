@@ -24,7 +24,7 @@ export function AdminOperationsPanel({onChanged}:{onChanged:()=>Promise<void>}){
  await clearAdminAttempt(attempt);
  setNotice(mode==='purchase'?'Compra registrada.':'Precio actualizado.');setRequestId(crypto.randomUUID());setQuantity('');setCost('');setPrice('');setExpiry('');
  if(mode==='price')setVariants(old=>old.map(v=>v.id===variantId?{...v,price_cents:newPrice}:v));await onChanged();
- }catch(e){setError((e instanceof Error?e.message:'No se pudo confirmar')+'. Salí y volvé a entrar a Administración para verificar el intento antes de repetir.');}finally{setBusy(false)}
+ }catch(e){setError((e instanceof Error?e.message:'No se pudo confirmar')+'. Si el intento fue enviado, verificá la operación pendiente antes de repetirla.');}finally{setBusy(false)}
  }
  return <section className="admin-panel"><div className="admin-switch"><button className={mode==='purchase'?'selected':''} onClick={()=>{setMode('purchase');setError('');setNotice('')}}>Registrar compra</button><button className={mode==='price'?'selected':''} onClick={()=>{setMode('price');setError('');setNotice('')}}>Actualizar precio</button></div>
  <div className="admin-form"><label>Producto<select value={variantId} onChange={e=>setVariantId(e.target.value)} disabled={busy}><option value="">Seleccionar producto</option>{variants.map(v=><option key={v.id} value={v.id}>{familyNames.get(v.family_id)||'Otros'} · {v.name}</option>)}</select></label>
