@@ -10,8 +10,6 @@ export function AdminOperationsPanel({onChanged}:{onChanged:()=>Promise<void>}){
  const [quantity,setQuantity]=useState('');const [cost,setCost]=useState('');const [price,setPrice]=useState('');const [expiry,setExpiry]=useState('');
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
  const [requestId,setRequestId]=useState(()=>crypto.randomUUID());
- const qaHost=typeof window!=='undefined'&&window.location.hostname==='develop.inmensamar.pages.dev';
- const [qaLostResponse,setQaLostResponse]=useState(false);
  useEffect(()=>{let live=true;async function load(){if(!supabase)return;const [v,f]=await Promise.all([supabase.from('product_variants').select('id,name,base_unit,price_cents,family_id,active').eq('active',true),supabase.from('product_families').select('id,name')]);if(live){if(v.error||f.error)setError(v.error?.message||f.error?.message||'Error');else {setVariants(v.data||[]);setFamilies(f.data||[]);}}}void load();return()=>{live=false}},[]);
  const selected=variants.find(v=>v.id===variantId);const familyNames=new Map(families.map(f=>[f.id,f.name]));
  const money=(n:number)=>`Q ${(n/100).toFixed(2)}`;
@@ -23,12 +21,6 @@ export function AdminOperationsPanel({onChanged}:{onChanged:()=>Promise<void>}){
  setBusy(true);
  try {const payload=mode==='purchase'?{p_request_id:requestId,p_variant_id:variantId,p_quantity:num,p_unit_cost_cents:cents,p_use_by:expiry||null}:{p_request_id:requestId,p_variant_id:variantId,p_new_price_cents:newPrice};const attempt=await saveAdminAttempt(mode==='purchase'?'purchase':'price',payload,mode==='purchase'?`Compra de ${num} ${selected.base_unit} de ${selected.name}`:`Precio de ${selected.name}`);const r=mode==='purchase'?await supabase.rpc('admin_register_purchase',{p_request_id:requestId,p_variant_id:variantId,p_quantity:num,p_unit_cost_cents:cents,p_use_by:expiry||null}):await supabase.rpc('admin_update_price',{p_request_id:requestId,p_variant_id:variantId,p_new_price_cents:newPrice});
  if(r.error)throw r.error;
- // QA only: emulate a lost response AFTER the server committed the purchase.
- // The attempt remains saved and blocks new admin operations until verified.
- if(mode==='purchase'&&qaHost&&qaLostResponse){
-  setQaLostResponse(false);
-  throw new Error('Simulación QA: compra registrada en Supabase, respuesta no recibida. Verificá el intento antes de continuar.');
- }
  await clearAdminAttempt(attempt);
  setNotice(mode==='purchase'?'Compra registrada.':'Precio actualizado.');setRequestId(crypto.randomUUID());setQuantity('');setCost('');setPrice('');setExpiry('');
  if(mode==='price')setVariants(old=>old.map(v=>v.id===variantId?{...v,price_cents:newPrice}:v));await onChanged();
@@ -38,7 +30,6 @@ export function AdminOperationsPanel({onChanged}:{onChanged:()=>Promise<void>}){
  <div className="admin-form"><label>Producto<select value={variantId} onChange={e=>setVariantId(e.target.value)} disabled={busy}><option value="">Seleccionar producto</option>{variants.map(v=><option key={v.id} value={v.id}>{familyNames.get(v.family_id)||'Otros'} · {v.name}</option>)}</select></label>
  {selected&&<p className="admin-hint">Precio actual: {money(selected.price_cents)} / {selected.base_unit}</p>}
  {mode==='purchase'?<><label>Cantidad ({selected?.base_unit||'unidad base'})<input inputMode="decimal" value={quantity} onChange={e=>setQuantity(e.target.value)} placeholder="Ej. 50" disabled={busy}/></label><label>Costo por {selected?.base_unit||'unidad'} (Q)<input inputMode="decimal" value={cost} onChange={e=>setCost(e.target.value)} placeholder="Ej. 28.00" disabled={busy}/></label><label>Vencimiento (opcional)<input type="date" value={expiry} onChange={e=>setExpiry(e.target.value)} disabled={busy}/></label></>:<label>Nuevo precio por {selected?.base_unit||'unidad'} (Q)<input inputMode="decimal" value={price} onChange={e=>setPrice(e.target.value)} placeholder="Ej. 45.00" disabled={busy}/></label>}
- {qaHost&&mode==='purchase'&&<label className="admin-hint"><input type="checkbox" checked={qaLostResponse} onChange={e=>setQaLostResponse(e.target.checked)} disabled={busy}/> QA: simular respuesta perdida después de registrar compra (solo develop)</label>}
  {error&&<p role="alert" className="admin-error">{error}</p>}{notice&&<p role="status" className="admin-ok">{notice}</p>}
  <button className="primary" onClick={()=>void submit()} disabled={busy||!variantId}>{busy?'Guardando…':mode==='purchase'?'Confirmar compra':'Guardar precio'}</button>
  <small>Solo Administrador · Ambiente de pruebas. Si la conexión falla después de confirmar, verificá en Supabase antes de intentar de nuevo.</small></div></section>
