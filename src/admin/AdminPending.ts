@@ -1,5 +1,5 @@
 import {supabase} from '../lib/supabase';
-export type AdminKind='purchase'|'price'|'catalog'|'adjustment'|'expense';
+export type AdminKind='purchase'|'price'|'catalog'|'adjustment'|'expense'|'minimum';
 export type AdminAttempt={id:string;userId:string;kind:AdminKind;payload:Record<string,unknown>;label:string;createdAt:string};
 const key=(id:string)=>`im-admin-pending-v1:${id}`;
 
@@ -47,7 +47,7 @@ export async function verifyAdminAttempt(attempt:AdminAttempt):Promise<'found'|'
  const {data:authData,error:authError}=await supabase.auth.getUser();
  if(authError)throw new Error('No se pudo validar la sesión o la conexión. Conservamos el intento pendiente.');
  if(authData.user?.id!==userId)throw new Error('La sesión cambió. Conservamos el intento pendiente.');
- const table=attempt.kind==='purchase'?'admin_purchase_events':attempt.kind==='price'?'admin_price_events':attempt.kind==='catalog'?'admin_catalog_events':attempt.kind==='expense'?'operating_expenses':'admin_inventory_adjustments';
+ const table=attempt.kind==='purchase'?'admin_purchase_events':attempt.kind==='price'?'admin_price_events':attempt.kind==='catalog'?'admin_catalog_events':attempt.kind==='expense'?'operating_expenses':attempt.kind==='minimum'?'admin_stock_minimum_events':'admin_inventory_adjustments';
  const {data,error}=await supabase.from(table).select('id,actor_id').eq('request_id',attempt.id).limit(1);
  if(error)throw new Error('No se pudo verificar el movimiento en Supabase. No repitás la operación. '+error.message);
  if(data?.length){if(data[0].actor_id!==userId)throw new Error('Operación registrada por otra cuenta');return 'found';}
