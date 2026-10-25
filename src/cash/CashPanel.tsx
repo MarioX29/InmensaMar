@@ -1,3 +1,4 @@
+import {ErrandReview} from './ErrandReview';
 import {CashWithdrawals} from './CashWithdrawals';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
@@ -182,6 +183,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    </>:<p>No hay jornadas de Caja registradas.</p>}
   </div>
   <CashWithdrawals onChanged={()=>void load()}/>
+  <ErrandReview/>
   {day?.status==='open'&&<div className="cash-card" aria-label="Simulador de cierre diario">
    <h3>Simular cierre diario</h3>
    <p>Ingresá el efectivo contado. Al cerrar, el dueño retira todo el efectivo; no queda sencillo en el local.</p>
