@@ -85,11 +85,11 @@ export function DriverCashFloat() {
           <button type="button" className="delivery-primary" onClick={() => void declareFloat()} disabled={saving}>
             {saving ? 'Registrando…' : 'Registrar sencillo'}
           </button>
-          <p className="delivery-subtitle">Se registra una vez por jornada, sin aprobación. Si te equivocás, avisá al encargado para revisar el registro.</p>
+          <p className="delivery-subtitle">Se registra una vez por jornada. Administración debe confirmar cuánto te entregó.</p>
         </>}
       </>}
     {error && <p className="delivery-error" role="alert">{error}</p>}
     {message && <p className="delivery-success" role="status">{message}</p>}
-    <p className="delivery-subtitle">Este registro todavía no modifica el saldo de liquidaciones. Los cobros de tus entregas se controlan por separado.</p>
+    <p className="delivery-subtitle">La declaración no se suma a tu saldo hasta que Administración confirme la entrega del dinero.</p>
   </section>;
 }
