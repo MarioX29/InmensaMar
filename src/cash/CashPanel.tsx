@@ -119,7 +119,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const nextFloatCents=0; // El dueno retira todo; no queda efectivo reservado en el local.
  const closingDifference=dayBalance!==null&&countedCents!==null?countedCents-dayBalance.expected_cents:null;
  const closingWithdrawal=countedCents;
- const canClose=false&&!!day&&day.status==='open'&&!!dayBalance&&!balanceError&&countedCents!==null&&nextFloatCents!==null&&nextFloatCents<=countedCents&&closeConfirm==='CERRAR'&&!closeBusy&&!busy;
+ const canClose = false; // Disabled until daily cash reconciliation is implemented.
  async function confirmClose(){
   if(!supabase||!canClose||!day||countedCents===null||nextFloatCents===null)return;
   if(closeAttempt.current&&(closeAttempt.current.dayId!==day.id||closeAttempt.current.counted!==countedCents||closeAttempt.current.nextFloat!==nextFloatCents)){
