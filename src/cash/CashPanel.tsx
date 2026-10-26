@@ -1,5 +1,4 @@
-import {FloatConfirm} from './FloatConfirm';
-import {ErrandReview} from './ErrandReview';
+import {UnifiedSettlement} from './UnifiedSettlement';
 import {CashWithdrawals} from './CashWithdrawals';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
@@ -120,7 +119,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
  const nextFloatCents=0; // El dueno retira todo; no queda efectivo reservado en el local.
  const closingDifference=dayBalance!==null&&countedCents!==null?countedCents-dayBalance.expected_cents:null;
  const closingWithdrawal=countedCents;
- const canClose=!!day&&day.status==='open'&&!!dayBalance&&!balanceError&&countedCents!==null&&nextFloatCents!==null&&nextFloatCents<=countedCents&&closeConfirm==='CERRAR'&&!closeBusy&&!busy;
+ const canClose=false&&!!day&&day.status==='open'&&!!dayBalance&&!balanceError&&countedCents!==null&&nextFloatCents!==null&&nextFloatCents<=countedCents&&closeConfirm==='CERRAR'&&!closeBusy&&!busy;
  async function confirmClose(){
   if(!supabase||!canClose||!day||countedCents===null||nextFloatCents===null)return;
   if(closeAttempt.current&&(closeAttempt.current.dayId!==day.id||closeAttempt.current.counted!==countedCents||closeAttempt.current.nextFloat!==nextFloatCents)){
@@ -184,10 +183,9 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    </>:<p>No hay jornadas de Caja registradas.</p>}
   </div>
   <CashWithdrawals onChanged={()=>void load()}/>
-  <FloatConfirm/>
-  <ErrandReview/>
+  <UnifiedSettlement onChanged={()=>void load()}/>
   {day?.status==='open'&&<div className="cash-card" aria-label="Simulador de cierre diario">
-   <h3>Simular cierre diario</h3>
+   <h3>Cierre diario (pendiente de conciliación)</h3>
    <p>Ingresá el efectivo contado. Al cerrar, el dueño retira todo el efectivo; no queda sencillo en el local.</p>
    <label>Efectivo contado (Q)<input inputMode="decimal" value={countedAmount} onChange={e=>setCountedAmount(e.target.value)} placeholder="Ej. 962.50"/></label>
    {dayBalance? <div className="cash-day-breakdown">
@@ -195,7 +193,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
     <div><span>Diferencia (contado - esperado)</span><strong>{closingDifference===null?'—':`${closingDifference<0?'-':''}${money(Math.abs(closingDifference))}`}</strong></div>
     <div><span>Efectivo que retira el dueño</span><strong>{closingWithdrawal===null?'—':money(closingWithdrawal)}</strong></div>
    </div>:<p>Esperando el cálculo del efectivo esperado.</p>}
-   <small>Este cierre todavía está en QA: no contempla gastos, devoluciones ni todos los movimientos. Usar únicamente con jornadas ficticias verificadas.</small>
+   <small>Cierre temporalmente deshabilitado para evitar saldos incorrectos. Este cierre todavía está en QA: no contempla gastos, devoluciones ni todos los movimientos. Usar únicamente con jornadas ficticias verificadas.</small>
    <label>Para confirmar una jornada de prueba, escribí CERRAR<input value={closeConfirm} onChange={e=>setCloseConfirm(e.target.value)} placeholder="CERRAR" disabled={closeBusy||busy}/></label>
    <button className="cash-primary" disabled={!canClose} onClick={()=>void confirmClose()}>{closeBusy?'Confirmando…':'Confirmar cierre de prueba'}</button>
    {closeError&&<p className="cash-error" role="alert">{closeError}</p>}
@@ -219,19 +217,19 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
     <article><small>Incidencias abiertas</small><strong>{overview?.open_issues||0}</strong></article>
    </div>
   </div>
-  <div className="cash-card"><h3>Pendiente por liquidar · repartidores</h3><p>Saldos históricos todavía bajo responsabilidad de repartidores. No incluye al dueño, que retira el efectivo al cerrar Caja.</p>
+  <div className="cash-card"><h3>Histórico de cobros y entregas · sin ajustes de compras</h3><p>Vista histórica anterior a la liquidación única; no usar como saldo actual. No incluye al dueño, que retira el efectivo al cerrar Caja.</p>
    <div className="cash-table-wrap"><table><thead><tr><th>Persona</th><th>Cobrado</th><th>Entregado</th><th>Pendiente</th></tr></thead><tbody>{positions.filter(x=>x.user_id!==currentUser).map(x=><tr key={x.user_id}><td>{x.display_name}</td><td>{money(x.collected_cents)}</td><td>{money(x.handed_off_cents)}</td><td><strong>{money(x.remaining_cents)}</strong></td></tr>)}</tbody></table></div>
    {!positions.some(x=>x.user_id!==currentUser)&&<p>No hay repartidores con movimientos registrados.</p>}
    <small>El saldo histórico del administrador se omite de esta lista; aún no se ha conciliado contablemente contra los retiros de cierres anteriores.</small>
   </div>
-  <div className="cash-card"><h3>Registrar entrega de efectivo</h3><p>El administrador registra el efectivo entregado al responsable de Caja configurado en Supabase. Confirmá que el dinero fue recibido físicamente.</p>
+  {day?.status!=='open'&&<div className="cash-card"><h3>Registrar entrega de efectivo</h3><p>El administrador registra el efectivo entregado al responsable de Caja configurado en Supabase. Confirmá que el dinero fue recibido físicamente.</p>
    <label>Persona que entrega<select value={source} disabled={busy||!!attempt.current} onChange={e=>setSource(e.target.value)}><option value="">Seleccionar persona</option>{positions.filter(x=>x.user_id!==currentUser&&Number(x.remaining_cents)>0).map(x=><option key={x.user_id} value={x.user_id}>{x.display_name} · {money(x.remaining_cents)}</option>)}</select></label>
    <label>Monto recibido (Q)<input inputMode="decimal" value={amount} disabled={busy||!!attempt.current} onChange={e=>setAmount(e.target.value)} placeholder="0.00"/></label>
    <label>Nota (opcional)<input maxLength={250} value={note} disabled={busy||!!attempt.current} onChange={e=>setNote(e.target.value)} placeholder="Ej. efectivo de la tarde"/></label>
    <button className="cash-primary" disabled={!canSubmit} onClick={()=>void submit()}>{busy?'Registrando…':'Confirmar efectivo recibido'}</button>
    {attempt.current&&<p className="cash-error">Solicitud incierta: comprobá el historial antes de otra operación.</p>}
    <small>Este registro no altera ventas ni cobros originales.</small>
-  </div>
+  </div>}
   <div className="cash-card"><h3>Últimas entregas de efectivo</h3>{!handoffs.length?<p>Todavía no hay entregas registradas.</p>:<div className="cash-table-wrap"><table><thead><tr><th>Fecha</th><th>De</th><th>Importe</th><th>Nota</th></tr></thead><tbody>{handoffs.map(h=><tr key={h.id}><td>{new Date(h.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala'})}</td><td>{positions.find(p=>p.user_id===h.from_user_id)?.display_name||h.from_user_id.slice(0,8)}</td><td>{money(h.amount_cents)}</td><td>{h.note||'—'}</td></tr>)}</tbody></table></div>}</div>
   <p className="cash-footnote">QA: los movimientos diarios y los pendientes históricos son conceptos distintos. Los retiros de Caja no ajustan el saldo histórico de repartidores en Supabase. No utilizar como conciliación contable definitiva.</p>
  </section>;
