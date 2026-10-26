@@ -46,7 +46,7 @@ export function DriverErrands(){
  }
  return <section className="delivery-card" aria-label="Mis compras">
   <div className="delivery-card-head"><h2>Compras</h2><button type="button" disabled={busy} onClick={()=>void load()}>Actualizar</button></div>
-  <p className="delivery-subtitle">Registrá compras que hiciste con dinero del negocio. No se descuentan de tu liquidación hasta que las aprueben.</p>
+  <p className="delivery-subtitle">Registrá compras que hiciste con dinero del negocio. Se revisan junto con tu sencillo y tus cobros al liquidar.</p>
   <label>¿Qué compraste?<input value={description} maxLength={250} onChange={e=>setDescription(e.target.value)} disabled={busy||!!pending.current} placeholder="Ej. huevos y leche"/></label>
   <label>¿Cuánto gastaste? (Q)<input value={amount} inputMode="decimal" onChange={e=>setAmount(e.target.value)} disabled={busy||!!pending.current} placeholder="Ej. 65.00"/></label>
   <label>Tipo de compra<select value={category} onChange={e=>setCategory(e.target.value as 'personal'|'business')} disabled={busy||!!pending.current}><option value="personal">Personal / casa</option><option value="business">Gasto del negocio</option></select></label>

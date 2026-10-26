@@ -1,3 +1,4 @@
+import {businessDate} from '../ui/dates';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './driver-cash-float.css';
@@ -74,7 +75,7 @@ export function DriverCashFloat() {
     </div>
     {loading ? <p>Consultando sencillo…</p> : !day ?
       <p>No hay una jornada de Caja abierta. Podrás declarar tu sencillo cuando el mostrador abra Caja.</p> : <>
-        <p className="delivery-subtitle">Jornada: {day.business_date}</p>
+        <p className="delivery-subtitle">Jornada: {businessDate(day.business_date)}</p>
         {record ? <>
           <div className="driver-float-total"><span>Sencillo declarado</span><strong>{formatMoney(record.amount_cents)}</strong></div>
           <p className="delivery-subtitle">Ya registraste tu sencillo para esta jornada. No es una venta ni una liquidación.</p>

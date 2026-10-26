@@ -204,7 +204,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const hasPayment=(orderId:string)=>paymentEvents.some(e=>e.order_id===orderId&&e.event_kind==='payment');
  const pendingLate=orders.filter(o=>o.status==='delivered'&&!hasPayment(o.id)&&paymentEvents.some(e=>e.order_id===o.id&&e.event_kind==='pending'));
  return <section className="delivery-module">
-  <p className="delivery-warning">Confirmar salida asigna los pedidos y registra su salida física. Al marcar entregado registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada no está verificada.</p>
+  <details className="feature-note"><summary>Cómo registrar salidas y cobros</summary><p>Confirmar salida registra la salida física del producto. Al entregar, registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada requiere verificación.</p></details>
   {error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole==='driver'&&<section className="delivery-card">
@@ -218,10 +218,9 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    {driverPending&&<p role="alert" className="delivery-warning">Operación por verificar. No iniciés otra salida. Reintentá con la misma solicitud para comprobar si ya se registró.</p>}
    <button className="delivery-primary" disabled={busy||!(driverPending?.orderIds||driverSelected).length} onClick={()=>void takeDriverOrders()}>{busy?'Procesando…':driverPending?'Verificar misma salida':'Tomar pedidos y salir'}</button>
   </section>}
-  {staffRole==='driver'&&<DriverCashFloat/>}
-   {staffRole==='driver'&&<DriverErrands/>}
+  {staffRole==='driver'&&<details className="work-disclosure"><summary><strong>Mi sencillo y mis compras</strong><span>Ver y registrar →</span></summary><div className="work-disclosure-body"><DriverCashFloat/><DriverErrands/></div></details>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>En reparto</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
-  {staffRole!=='driver'&&view==='active'&&<section className="delivery-card">
+  {staffRole!=='driver'&&view==='active'&&<details className="work-disclosure delivery-new-outing"><summary><strong>Preparar una salida</strong><span>{available.length} pedidos listos · Preparar →</span></summary><section className="delivery-card">
    <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Elegí quién sale y marcá los pedidos listos.</p>
    <fieldset className="delivery-drivers"><legend>¿Quién va a repartir?</legend>
@@ -240,7 +239,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    <div className="delivery-summary"><span>{selected.length} pedidos seleccionados</span><strong>{drivers.find(d=>d.user_id===driver)?.display_name||'Elegí repartidor'}</strong></div>
    <button className="delivery-primary" disabled={busy||!driver||!selected.length} onClick={()=>setConfirm({kind:'outing',id:'new'})}>{busy?'Confirmando…':attempt.current?'Verificar misma salida':'Confirmar salida'}</button>
    {attempt.current&&<p className="delivery-subtitle">La última solicitud tiene un resultado incierto. Este botón utiliza el mismo identificador para evitar duplicarla.</p>}
-  </section>}
+  </section></details>}
   {staffRole!=='driver'&&view==='active'&&<section className="delivery-card"><h2>Salidas en curso</h2>
    {!routes.some(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled')))&&<p>No hay salidas en curso.</p>}
    {routes.filter(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled'))).map(r=>{
@@ -253,14 +252,14 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   </section>}
   {staffRole!=='driver'&&view==='history'&&<section className="delivery-card"><div className="delivery-card-head"><h2>Historial de reparto</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Consultá salidas cerradas por fecha y repartidor. Se muestran hasta las 100 salidas más recientes cargadas; los filtros no son un reporte completo de períodos anteriores.</p>
-   <div className="delivery-filters">
+   <details className="filter-disclosure"><summary>Filtrar historial</summary><div className="delivery-filters">
     <label>Desde<input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></label>
     <label>Hasta<input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/></label>
     <label>Repartidor<select value={historyDriver} onChange={e=>setHistoryDriver(e.target.value)}><option value="all">Todos</option>{drivers.map(d=><option key={d.user_id} value={d.user_id}>{d.display_name}</option>)}</select></label>
     <label>Estado<select value={historyStatus} onChange={e=>setHistoryStatus(e.target.value)}><option value="all">Todos</option><option value="delivered">Entregadas</option><option value="cancelled">Canceladas</option><option value="other">Otras cerradas</option></select></label>
     <label>Orden<select value={historySort} onChange={e=>{const value=e.target.value;if(value==='newest'||value==='oldest')setHistorySort(value);}}><option value="newest">Más recientes</option><option value="oldest">Más antiguas</option></select></label>
     <label>Buscar<input type="search" placeholder="Número de pedido o salida" value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/></label>
-   </div>
+   </div></details>
    {(()=>{
     const filtered=routes.filter(r=>r.status==='closed').filter(r=>{
      const ids=assignments.filter(a=>a.route_id===r.id).map(a=>a.order_id);
