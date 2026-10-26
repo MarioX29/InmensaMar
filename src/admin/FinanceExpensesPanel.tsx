@@ -17,7 +17,7 @@ export function FinanceExpensesPanel(){
   if(!/^\d+(?:[.,]\d{1,2})?$/.test(amount.trim())||!Number.isSafeInteger(cents)||cents<=0){setError('Ingresá un monto válido mayor que cero.');return;}
   if(note.length>250){setError('La nota no puede superar 250 caracteres.');return;}
   if(!date){setError('Seleccioná una fecha.');return;}
-  if(!window.confirm(`¿Registrar gasto de ${money(cents)} en ${categories[category]}?\nEsto NO descuenta automáticamente dinero de Caja.`))return;
+  if(!window.confirm(`¿Registrar gasto de ${money(cents)} en ${categories[category]}?\nLos gastos pagados con efectivo del negocio descuentan Caja. No los registrés también como retiro.`))return;
   setBusy(true);
   try{
    const payload={p_request_id:requestId,p_amount_cents:cents,p_category:category,p_payment_source:source,p_note:note.trim()||null,p_expense_date:date};
@@ -28,7 +28,7 @@ export function FinanceExpensesPanel(){
   }catch(e){const msg=e instanceof Error?e.message:'Error al registrar';setError(/load failed|failed to fetch|networkerror|fetch failed/i.test(msg)?'No pudimos confirmar el gasto. Verificá la operación pendiente antes de repetirla.':msg+' Verificá la operación pendiente antes de repetirla.');}
   finally{setBusy(false)}
  }
- return <section className="finance-panel"><div className="admin-form"><h3>Registrar gasto</h3><p className="admin-hint">No incluye compras de mercadería ni retiros de Caja.</p>
+ return <section className="finance-panel"><div className="admin-form"><h3>Registrar gasto</h3><p className="admin-hint">No incluye compras de mercadería ni retiros personales. Las compras del negocio reportadas por repartidores se registran automáticamente al liquidar; no las ingresés de nuevo.</p>
  <label>Monto (Q)<input inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="Ej. 75.00" disabled={busy}/></label>
  <label>Categoría<select value={category} onChange={e=>setCategory(e.target.value)} disabled={busy}>{Object.entries(categories).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
  <label>Pagado con<select value={source} onChange={e=>setSource(e.target.value)} disabled={busy}>{Object.entries(sources).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
@@ -36,7 +36,7 @@ export function FinanceExpensesPanel(){
  <label>Nota (opcional)<input value={note} maxLength={250} onChange={e=>setNote(e.target.value)} placeholder="Detalle del gasto" disabled={busy}/></label>
  {error&&<p role="alert" className="admin-error">{error}</p>}{notice&&<p role="status" className="admin-ok">{notice}</p>}
  <button className="primary" onClick={()=>void submit()} disabled={busy}>{busy?'Guardando…':'Guardar gasto'}</button>
- <small>Solo Administrador. Registrar un gasto no modifica el saldo de Caja ni genera un pago adicional.</small></div>
+ <small>Los gastos en efectivo del negocio reducen el esperado de Caja de esa fecha. Las transferencias y el dinero personal no reducen el efectivo del cajón.</small></div>
  <div className="finance-history"><div className="finance-history-heading"><h3>Gastos recientes</h3><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
  {rows.length===0?<p className="admin-hint">Todavía no hay gastos registrados.</p>:rows.map(r=><div className="finance-entry" key={r.id}><div><strong>{categories[r.category]||r.category}</strong><small>{r.expense_date} · {sources[r.payment_source]||r.payment_source}</small>{r.note&&<small>{r.note}</small>}</div><b>{money(Number(r.amount_cents))}</b></div>)}
  </div></section>
