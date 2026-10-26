@@ -5,7 +5,7 @@ type Preview={cash_day_id:string;driver_id:string;driver_name:string;float_cents
 type Purchase={id:string;driver_id:string;description:string;amount_cents:number;category:'personal'|'business';status:string};
 const money=(n:number)=>`Q ${(Number(n)/100).toFixed(2)}`;
 const parse=(v:string)=>{const cents=Math.round(Number(v.trim())*100);return /^\d+(?:\.\d{1,2})?$/.test(v.trim())&&Number.isSafeInteger(cents)?cents:null;};
-export function UnifiedSettlement({onChanged}:{onChanged?:()=>void}){
+export function UnifiedSettlement({onChanged,onSummary,refreshSignal,cashDayStatus}:{onChanged?:()=>void;onSummary?:(value:{pending:number;settled:number}|null)=>void;refreshSignal?:number;cashDayStatus?:string}){
  const [rows,setRows]=useState<Preview[]>([]),[amounts,setAmounts]=useState<Record<string,string>>({});
  const [purchases,setPurchases]=useState<Purchase[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -13,16 +13,16 @@ export function UnifiedSettlement({onChanged}:{onChanged?:()=>void}){
  const load=useCallback(async()=>{
   if(!supabase)return;
   const {data,error:e}=await supabase.rpc('driver_day_settlement_preview');
-  if(e){setRows([]);setError(e.message);return;}
+  if(e){setRows([]);setError(e.message);onSummary?.(null);return;}
   const previews=(data||[]) as Preview[];
   if(previews.length){
    const result=await supabase.from('driver_cash_errands').select('id,driver_id,description,amount_cents,category,status').eq('cash_day_id',previews[0].cash_day_id).order('created_at');
-   if(result.error){setRows([]);setPurchases([]);setError(result.error.message);return;}
+   if(result.error){setRows([]);setPurchases([]);setError(result.error.message);onSummary?.(null);return;}
    setPurchases((result.data||[]) as Purchase[]);
   }else setPurchases([]);
-  setRows(previews);setError('');
- },[]);
- useEffect(()=>{void load();},[load]);
+  setRows(previews);setError('');onSummary?.({pending:previews.filter(r=>!r.settled).length,settled:previews.filter(r=>r.settled).length});
+ },[onSummary]);
+ useEffect(()=>{void load();},[load,refreshSignal,cashDayStatus]);
  async function settle(r:Preview){
   if(!supabase||busy)return;
   const counted=parse(amounts[r.driver_id]||'');
@@ -41,26 +41,25 @@ export function UnifiedSettlement({onChanged}:{onChanged?:()=>void}){
   }catch(e){setError(String(e)+' Resultado incierto. Conservá el intento y verificá antes de repetir.');}
   finally{setBusy(false);}
  }
- return <section className="cash-card" aria-label="Liquidación única de repartidores">
-  <h3>Liquidación de repartidores</h3>
-  <p>Una sola revisión: sencillo declarado, cobros y compras. Confirmá únicamente el efectivo recibido físicamente. Al liquidar confirmás también el sencillo que salió de Caja. Las compras personales quedan como retiros del dueño y las del negocio como gastos; no se descuentan dos veces.</p>
-  <button type="button" disabled={busy} onClick={()=>void load()}>Actualizar liquidaciones</button>
-  {rows.length===0?<p>Sin movimientos de repartidores para la jornada abierta.</p>:rows.map(r=><div className="cash-day-summary" key={r.driver_id}>
-   <strong>{r.driver_name} {r.settled?'· Liquidado':''}</strong>
-   <div className="cash-day-breakdown">
-    <div><span>Sencillo declarado</span><strong>{money(r.float_cents)}</strong></div>
-    <div><span>Cobros en efectivo</span><strong>{money(r.collected_cents)}</strong></div>
-    <div><span>Compras pendientes o aprobadas</span><strong>−{money(r.purchases_cents)}</strong></div>
-    <div><span>Esperado</span><strong>{money(r.expected_cents)}</strong></div>
+ return <section className="cash-card cash-settlements" aria-label="Liquidación única de repartidores">
+  <div className="cash-section-head"><div><p className="cash-eyebrow">REPARTO</p><h2>Liquidaciones</h2></div><button className="cash-text-button" type="button" disabled={busy} onClick={()=>void load()}>Actualizar</button></div>
+  <p>Elegí al repartidor para revisar sencillo, cobros y compras.</p>
+  {rows.length===0&&!error?<p className="cash-empty">Sin movimientos de repartidores para la jornada abierta.</p>:rows.map(r=><details className="cash-driver" key={r.driver_id}>
+   <summary><span className="cash-avatar" aria-hidden="true">{r.driver_name.trim().charAt(0).toUpperCase()}</span><span className="cash-driver-name"><strong>{r.driver_name}</strong><small>{r.settled?'Liquidado':'Pendiente de liquidar'}</small></span><span className="cash-driver-amount"><strong>{money(r.expected_cents)}</strong><small>{r.settled?'Esperado · Ver detalle':'Esperado · Revisar →'}</small></span></summary>
+   <div className="cash-driver-body">
+    <div className="cash-driver-metrics"><div><span>Sencillo</span><strong>{money(r.float_cents)}</strong></div><div><span>Cobros</span><strong>{money(r.collected_cents)}</strong></div><div><span>Compras</span><strong>−{money(r.purchases_cents)}</strong></div></div>
+    <div className="cash-line cash-line-total"><span>Efectivo esperado del repartidor</span><strong>{money(r.expected_cents)}</strong></div>
+    {purchases.filter(p=>p.driver_id===r.driver_id).length>0&&<div className="cash-purchases"><h3>Compras reportadas</h3>{purchases.filter(p=>p.driver_id===r.driver_id).map(p=><div className="cash-purchase" key={p.id}><span><strong>{p.description}</strong><small>{p.category==='personal'?'Retiro personal':'Gasto del negocio'}{p.status==='rejected'?' · Rechazada, no descontada':''}</small></span><strong>{money(p.amount_cents)}</strong></div>)}</div>}
+    {!r.settled&&<>
+     <p>Al confirmar revisás también que los {money(r.float_cents)} de sencillo hayan salido de Caja. Las compras ya están descontadas del esperado.</p>
+     <label htmlFor={`settle-${r.driver_id}`}>Efectivo contado (Q)<input id={`settle-${r.driver_id}`} className="cash-amount-input" inputMode="decimal" value={amounts[r.driver_id]||''} disabled={busy||!!attempt.current} placeholder="0.00" onChange={e=>setAmounts(v=>({...v,[r.driver_id]:e.target.value}))}/></label>
+     {parse(amounts[r.driver_id]||'')!==null&&<div className="cash-line"><span>Diferencia del repartidor</span><strong>{money((parse(amounts[r.driver_id]||'')??0)-Number(r.expected_cents))}</strong></div>}
+     <button className="cash-primary" type="button" disabled={busy||(!!attempt.current&&attempt.current.driver!==r.driver_id)} onClick={()=>void settle(r)}>{busy?'Registrando…':attempt.current?.driver===r.driver_id?'Reintentar misma liquidación':'Confirmar liquidación'}</button>
+     <small>Terminá sus entregas antes de liquidar: después se bloquean nuevos cobros de esta jornada.</small>
+    </>}
    </div>
-   {purchases.filter(p=>p.driver_id===r.driver_id).map(p=><p key={p.id}>{p.description} · {p.category==='personal'?'Retiro personal':'Gasto del negocio'} · {money(p.amount_cents)}{p.status==='rejected'?' · Rechazada, no descontada':''}</p>)}
-   {!r.settled&&<><label>Efectivo contado (Q)
-    <input inputMode="decimal" value={amounts[r.driver_id]||''} disabled={busy||!!attempt.current} placeholder="0.00" onChange={e=>setAmounts(v=>({...v,[r.driver_id]:e.target.value}))}/>
-   </label>
-   <button className="cash-primary" type="button" disabled={busy||(!!attempt.current&&attempt.current.driver!==r.driver_id)} onClick={()=>void settle(r)}>{busy?'Registrando…':attempt.current?.driver===r.driver_id?'Reintentar misma liquidación':'Confirmar liquidación'}</button></>}
-  </div>)}
+  </details>)}
   {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
-  {attempt.current&&<p className="cash-error">Resultado incierto: comprobá el registro o reintentá la misma liquidación con el mismo monto. El reintento no duplica dinero.</p>}
-  <small>Los cobros posteriores a una liquidación se bloquean para esa persona y jornada. Terminá sus entregas antes de liquidar.</small>
+  {attempt.current&&<p className="cash-error">Resultado incierto: verificá el registro o reintentá la misma liquidación. Conservamos el monto y el identificador para evitar duplicados.</p>}
  </section>;
 }

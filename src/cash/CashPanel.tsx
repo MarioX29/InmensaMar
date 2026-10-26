@@ -19,6 +19,11 @@ const nextGuatemalaMidnightUtc=(businessDate:string)=>{
  return end.toISOString();
 };
 export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
+ const [tab,setTab]=useState<'today'|'drivers'|'history'>('today');
+ const [action,setAction]=useState<'withdraw'|'close'|'handoff'|null>(null);
+ const [refreshSignal,setRefreshSignal]=useState(0);
+ const [settlementSummary,setSettlementSummary]=useState<{pending:number;settled:number}|null>(null);
+ const onSettlementSummary=useCallback((value:{pending:number;settled:number}|null)=>setSettlementSummary(value),[]);
  const [day,setDay]=useState<CashDay|null>(null);
  const [dayError,setDayError]=useState('');
  const [dayBalance,setDayBalance]=useState<DayBalance|null>(null);
@@ -120,6 +125,10 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
   }catch(e){setCloseError(message(e)+' Resultado incierto: revisá la jornada antes de reintentar.');}
   finally{setCloseBusy(false);}
  }
+ useEffect(()=>{if(!closeAttempt.current)setConfirmFloatOrigin(false);},[day?.id,dayBalance?.unconfirmed_float_cents]);
+ const refreshAll=()=>{void load();setRefreshSignal(v=>v+1);};
+ const showTab=(next:'today'|'drivers'|'history')=>{setTab(next);setAction(null);};
+ const businessDate=day?new Intl.DateTimeFormat('es-GT',{day:'numeric',month:'long',year:'numeric',timeZone:'America/Guatemala'}).format(new Date(`${day.business_date}T12:00:00-06:00`)):'Sin jornada';
  const selected=positions.find(x=>x.user_id===source);
  const cents=amount.trim()&&/^\d+(\.\d{1,2})?$/.test(amount)?Math.round(Number(amount)*100):0;
  const canSubmit=!!selected&&!driverIds.includes(selected.user_id)&&Number.isSafeInteger(cents)&&cents>0&&cents<=Number(selected.remaining_cents)&&!busy;
@@ -142,97 +151,114 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
   finally{setBusy(false);}
  }
  if(staffRole==='driver')return <section className="cash-panel">Acceso restringido a Caja.</section>;
- if(staffRole==='counter')return <section className="cash-panel"><div className="cash-head"><h2>Caja</h2></div><CashWithdrawals/></section>;
- return <section className="cash-panel">
-  <div className="cash-head"><div><h2>Caja</h2><p>Control de Caja, entregas y retiros de efectivo.</p></div><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
-  <div className="cash-card" aria-label="Jornada de Caja">
-   <h3>Jornada de Caja</h3>
-   {dayError?<p className="cash-error" role="alert">No se pudo consultar la apertura: {dayError}</p>:day?<>
-    <p>{day.status==='open'?'Caja abierta':'Caja cerrada'} · {day.business_date}</p>
-    <div className="cash-stats"><article><small>Sencillo inicial registrado</small><strong>{money(day.opening_float_cents)}</strong></article></div>
-    <small>El sencillo inicial no es una venta.</small>
-    {(day.status==='open'||dayBalance)&&<div className="cash-day-summary">
-     <h3>Efectivo esperado en mostrador</h3>
-     {balanceError?<p className="cash-error" role="alert">No se pudo calcular: {balanceError}</p>:dayBalance?<>
-      <div className="cash-stats"><article><small>Esperado de la jornada</small><strong>{money(dayBalance.expected_cents)}</strong></article></div>
-      <div className="cash-day-breakdown">
-       <div><span>Sencillo inicial</span><strong>{money(dayBalance.opening_cents)}</strong></div>
-       <div><span>Ventas en efectivo de la jornada</span><strong>{money(dayBalance.counter_sales_cents)}</strong></div>
-       <div><span>Cobros de reparto recibidos directamente en Caja</span><strong>{money(dayBalance.direct_delivery_cents)}</strong></div>
-       <div><span>Liquidaciones y entregas recibidas</span><strong>{money(dayBalance.received_handoffs_cents)}</strong></div>
-       <div><span>Sencillo revisado en liquidaciones (salida de Caja)</span><strong>−{money(dayBalance.float_out_cents)}</strong></div>
-       <div><span>Retiros directos de Caja</span><strong>−{money(dayBalance.withdrawals_cents)}</strong></div>
-       <div><span>Gastos pagados directamente desde Caja</span><strong>−{money(dayBalance.cash_expenses_cents)}</strong></div>
-       <div><span>Compras personales ya descontadas en reparto</span><strong>{money(dayBalance.personal_purchases_cents)}</strong></div>
-       <div><span>Compras del negocio ya descontadas en reparto</span><strong>{money(dayBalance.business_purchases_cents)}</strong></div>
-       <div><span>Diferencias registradas de repartidores</span><strong>{money(dayBalance.driver_difference_cents)}</strong></div>
-       {day.status==='closed'&&<>
-        <div><span>Efectivo contado al cerrar</span><strong>{money(dayBalance.counted_cents??0)}</strong></div>
-        <div><span>Diferencia de Caja</span><strong>{money(dayBalance.drawer_difference_cents??0)}</strong></div>
-        <div><span>Retiro final del dueño</span><strong>{money(dayBalance.owner_withdrawal_cents??0)}</strong></div>
-       </>}
-      </div>
-      <small>Las compras de reparto ya vienen descontadas del efectivo recibido. Se clasifican como retiros personales o gastos del negocio y no se restan de nuevo.</small>
-      {dayBalance.blockers.map((b,i)=><p className="cash-error" role="alert" key={i}>{b}</p>)}
-     </>:<p>Calculando efectivo esperado…</p>}
-    </div>}
-   </>:<p>No hay jornadas de Caja registradas.</p>}
-  </div>
-  <CashWithdrawals cashDay={day} onChanged={()=>void load()}/>
-  <UnifiedSettlement onChanged={()=>void load()}/>
-  {day?.status==='open'&&<div className="cash-card" aria-label="Cierre diario">
-   <h3>Cierre diario</h3>
-   <p>Ingresá el efectivo contado. Al cerrar, el dueño retira todo el efectivo; no queda sencillo en el local.</p>
-   <label>Efectivo contado (Q)<input inputMode="decimal" value={countedAmount} disabled={closeBusy||!!closeAttempt.current} onChange={e=>setCountedAmount(e.target.value)} placeholder="Ej. 962.50"/></label>
-   {dayBalance? <div className="cash-day-breakdown">
-    <div><span>Efectivo esperado según conciliación</span><strong>{money(dayBalance.expected_cents)}</strong></div>
-    <div><span>Diferencia (contado - esperado)</span><strong>{closingDifference===null?'—':`${closingDifference<0?'-':''}${money(Math.abs(closingDifference))}`}</strong></div>
-    <div><span>Efectivo que retira el dueño</span><strong>{closingWithdrawal===null?'—':money(closingWithdrawal)}</strong></div>
-   </div>:<p>Esperando el cálculo del efectivo esperado.</p>}
-   {dayBalance&&<p>Diferencia total de Caja y reparto: {closingDifference===null?'—':money(closingDifference+dayBalance.driver_difference_cents)}. Las diferencias de repartidores permanecen registradas aunque el conteo de Caja cuadre.</p>}
-   <small>El cierre vuelve a comprobar el saldo en el servidor. Si hay liquidaciones pendientes o el saldo cambia, se detiene para revisión.</small>
-   {dayBalance?.requires_float_confirmation&&<div>
-    <p>La liquidación anterior no guardó de dónde salió el sencillo. Este cálculo supone que {money(dayBalance.unconfirmed_float_cents)} salieron de Caja.</p>
-    <label><input type="checkbox" checked={confirmFloatOrigin} disabled={closeBusy||!!closeAttempt.current} onChange={e=>setConfirmFloatOrigin(e.target.checked)}/>Confirmo que ese sencillo se entregó desde Caja y estaba incluido en el efectivo del negocio.</label>
-    <small>Si el repartidor llevó dinero propio o de otra fuente, no confirmés: el origen requiere otro registro antes de cerrar.</small>
-   </div>}
-   <label>Para confirmar el cierre, escribí CERRAR<input value={closeConfirm} onChange={e=>setCloseConfirm(e.target.value)} placeholder="CERRAR" disabled={closeBusy||busy}/></label>
-   <button className="cash-primary" disabled={!canClose} onClick={()=>void confirmClose()}>{closeBusy?'Confirmando…':'Confirmar cierre'}</button>
-   {closeError&&<p className="cash-error" role="alert">{closeError}</p>}
-   {closeNotice&&<p className="cash-notice" role="status">{closeNotice}</p>}
-  </div>}
+ if(staffRole==='counter')return <section className="cash-panel"><header className="cash-head"><div><p className="cash-eyebrow">EFECTIVO DEL NEGOCIO</p><h1>Caja</h1></div></header><CashWithdrawals/></section>;
+ return <section className="cash-panel" aria-label="Caja">
+  <header className="cash-head">
+   <div><p className="cash-eyebrow">EFECTIVO DEL NEGOCIO</p><h1>Caja</h1><p className="cash-date">{businessDate}</p></div>
+   <button className="cash-refresh" onClick={refreshAll} disabled={busy||closeBusy} aria-label="Actualizar Caja">Actualizar</button>
+  </header>
+  {dayError&&<p className="cash-error" role="alert">No se pudo consultar la jornada: {dayError}</p>}
+  {balanceError&&day?.status==='open'&&<p className="cash-error" role="alert">No se pudo calcular el saldo: {balanceError}</p>}
   {closeNotice&&<p className="cash-notice" role="status">{closeNotice}</p>}
-  {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
-  <div className="cash-card">
-   <h3>Movimientos de la jornada{day?` · ${day.business_date}`:''}</h3>
-   <p>Solo operaciones de la fecha comercial de Guatemala. Las liquidaciones trasladan dinero, no son ventas nuevas.</p>
-   {dailyError&&<p className="cash-error" role="alert">No se pudieron consultar los movimientos: {dailyError}</p>}
-   {!day?<p>No hay jornada registrada.</p>:!daily?<p>Consultando movimientos…</p>:<div className="cash-stats">
-    <article><small>Cobros en efectivo de reparto</small><strong>{money(daily.cash_cents)}</strong></article>
-    <article><small>Liquidaciones recibidas</small><strong>{money(daily.handoff_cents)}</strong></article>
-    <article><small>Transferencias reportadas</small><strong>{money(daily.transfer_cents)}</strong></article>
+  {error&&<p className="cash-error" role="alert">{error}</p>}
+  {notice&&<p className="cash-notice" role="status">{notice}</p>}
+
+  <div className="cash-hero">
+   <div className="cash-hero-top"><span className="cash-status" data-open={day?.status==='open'}><i/>{day?day.status==='open'?'Jornada abierta':'Jornada cerrada':'Sin abrir'}</span><span>{day?.business_date}</span></div>
+   <div className="cash-hero-amount"><span>{day?.status==='closed'?'Efectivo contado al cerrar':'Efectivo esperado en Caja'}</span><strong>{dayBalance?money(day?.status==='closed'?dayBalance.counted_cents??dayBalance.expected_cents:dayBalance.expected_cents):'—'}</strong></div>
+   <p>{!day?'Abrí la jornada para comenzar el control de efectivo.':day.status==='closed'?'El conteo y las diferencias quedaron registrados.':dayBalance?.requires_float_confirmation?'Antes de cerrar falta confirmar el origen del sencillo.':'Saldo calculado con los movimientos de esta jornada.'}</p>
+   {day?.status==='open'&&<div className="cash-actions">
+    <button className="cash-light-button" aria-expanded={action==='withdraw'} aria-controls="cash-withdrawal-panel" onClick={()=>{setAction(action==='withdraw'?null:'withdraw');setTab('today');}}>Retirar efectivo <span aria-hidden="true">↗</span></button>
+    <button className="cash-outline-button" aria-expanded={action==='close'} aria-controls="cash-closing-panel" onClick={()=>{setAction(action==='close'?null:'close');setTab('today');}}>Cerrar jornada <span aria-hidden="true">→</span></button>
    </div>}
   </div>
-  <div className="cash-card"><h3>Pendientes e incidencias · acumulados</h3>
-   <div className="cash-stats">
-    <article><small>Clientes con saldo pendiente</small><strong>{money(overview?.pending_cents||0)}</strong></article>
-    <article><small>Incidencias abiertas</small><strong>{overview?.open_issues||0}</strong></article>
+
+  <nav className="cash-tabs" aria-label="Vistas de Caja">
+   <button aria-current={tab==='today'?'page':undefined} onClick={()=>showTab('today')}>Hoy</button>
+   <button aria-current={tab==='drivers'?'page':undefined} onClick={()=>showTab('drivers')}>Repartidores{settlementSummary&&settlementSummary.pending>0&&<span className="cash-count">{settlementSummary.pending}</span>}</button>
+   <button aria-current={tab==='history'?'page':undefined} onClick={()=>showTab('history')}>Historial</button>
+  </nav>
+
+  <div id="cash-withdrawal-panel" hidden={action!=='withdraw'&&tab!=='history'}>
+   <CashWithdrawals mode={action==='withdraw'?'form':'history'} cashDay={day} onCancel={()=>setAction(null)} onChanged={()=>void load()}/>
+  </div>
+
+  <section id="cash-closing-panel" className="cash-card cash-action-panel" hidden={action!=='close'||day?.status!=='open'} aria-label="Cierre diario">
+   <div className="cash-section-head"><div><p className="cash-eyebrow">AL TERMINAR EL DÍA</p><h2>Cerrar jornada</h2></div><button className="cash-text-button" onClick={()=>setAction(null)}>Volver</button></div>
+   <p>Contá el dinero que queda en Caja. El dueño retira ese efectivo al cerrar.</p>
+   {dayBalance?.blockers.map((b,i)=><p className="cash-error" role="alert" key={i}>{b}</p>)}
+   <label htmlFor="cash-counted">Efectivo contado (Q)<input id="cash-counted" className="cash-amount-input" inputMode="decimal" value={countedAmount} disabled={closeBusy||!!closeAttempt.current} onChange={e=>setCountedAmount(e.target.value)} placeholder="0.00"/></label>
+   {dayBalance&&<div className="cash-close-totals">
+    <div><span>Esperado</span><strong>{money(dayBalance.expected_cents)}</strong></div>
+    <div><span>Diferencia de Caja</span><strong data-warning={closingDifference!==null&&closingDifference!==0}>{closingDifference===null?'—':money(closingDifference)}</strong></div>
+    <div><span>Retiro final del dueño</span><strong>{closingWithdrawal===null?'—':money(closingWithdrawal)}</strong></div>
+   </div>}
+   {dayBalance&&dayBalance.driver_difference_cents!==0&&<p className="cash-warning">Diferencia de reparto: {money(dayBalance.driver_difference_cents)}. Total con Caja: {closingDifference===null?'—':money(closingDifference+dayBalance.driver_difference_cents)}.</p>}
+   {dayBalance?.requires_float_confirmation&&<div className="cash-origin-note">
+    <strong>Revisá el sencillo de la liquidación anterior</strong>
+    <p>El cálculo descuenta {money(dayBalance.unconfirmed_float_cents)} entregados desde Caja.</p>
+    <label className="cash-check"><input type="checkbox" checked={confirmFloatOrigin} disabled={closeBusy||!!closeAttempt.current} onChange={e=>setConfirmFloatOrigin(e.target.checked)}/><span>Confirmo que ese sencillo salió de Caja y estaba incluido en el efectivo del negocio.</span></label>
+    <small>Si era dinero propio del repartidor o de otra fuente, no confirmés este cierre.</small>
+   </div>}
+   <label htmlFor="cash-close-word">Para confirmar el cierre, escribí CERRAR<input id="cash-close-word" autoComplete="off" value={closeConfirm} onChange={e=>setCloseConfirm(e.target.value)} placeholder="Escribí aquí" disabled={closeBusy||busy}/></label>
+   <button className="cash-primary" disabled={!canClose} onClick={()=>void confirmClose()}>{closeBusy?'Confirmando…':closeAttempt.current?'Reintentar el mismo cierre':'Confirmar cierre'}</button>
+   {closeError&&<p className="cash-error" role="alert">{closeError}</p>}
+   {closeAttempt.current&&<small>Conservamos el mismo intento para evitar duplicados. Verificá el resultado antes de iniciar otro.</small>}
+  </section>
+
+  <div hidden={tab!=='today'||action!==null} className="cash-today">
+   <div className="cash-quick-stats">
+    <div><span>Sencillo inicial</span><strong>{day?money(day.opening_float_cents):'—'}</strong></div>
+    <div><span>Recibido de reparto</span><strong>{dayBalance?money(dayBalance.received_handoffs_cents):'—'}</strong></div>
+    <div><span>Salidas directas</span><strong>{dayBalance?money(dayBalance.withdrawals_cents+dayBalance.cash_expenses_cents):'—'}</strong></div>
    </div>
+   {dayBalance&&dayBalance.blockers.length>0&&<div className="cash-warning"><strong>Hay pendientes antes de cerrar</strong>{dayBalance.blockers.map((b,i)=><p key={i}>{b}</p>)}<button className="cash-text-button" onClick={()=>showTab('drivers')}>Revisar repartidores →</button></div>}
+   {dayBalance&&dayBalance.driver_difference_cents!==0&&<p className="cash-warning">Diferencias de reparto: {money(dayBalance.driver_difference_cents)}. Se conservan separadas del conteo de Caja.</p>}
+   <div className="cash-overview-grid">
+    <section className="cash-card cash-driver-shortcut"><div><p className="cash-eyebrow">REPARTO</p><h2>{settlementSummary?settlementSummary.pending>0?`${settlementSummary.pending} pendiente${settlementSummary.pending===1?'':'s'} de liquidar`:settlementSummary.settled>0?'Liquidaciones al día':'Sin movimientos de repartidores':'Consultando liquidaciones…'}</h2><p>{settlementSummary&&settlementSummary.settled>0?`${settlementSummary.settled} liquidación${settlementSummary.settled===1?'':'es'} registrada${settlementSummary.settled===1?'':'s'}.`:'Revisá sencillo, cobros y compras en un solo lugar.'}</p></div><button className="cash-text-button" onClick={()=>showTab('drivers')}>Ver repartidores <span aria-hidden="true">→</span></button></section>
+    <section className="cash-card cash-today-movements"><div className="cash-section-head"><h2>Cobros de reparto</h2><span className="cash-muted">Esta jornada</span></div>{dailyError?<p className="cash-error" role="alert">{dailyError}</p>:<>
+     <div className="cash-line"><span>En efectivo</span><strong>{daily?money(daily.cash_cents):'—'}</strong></div>
+     <div className="cash-line"><span>Transferencias reportadas</span><strong>{daily?money(daily.transfer_cents):'—'}</strong></div>
+     <small>Las transferencias no se suman al efectivo de Caja.</small>
+    </>}</section>
+   </div>
+   <details className="cash-disclosure"><summary><span>Ver detalle del saldo</span><span aria-hidden="true">+</span></summary><div className="cash-disclosure-body">
+    {dayBalance?<>
+     <div className="cash-line"><span>Sencillo inicial</span><strong>{money(dayBalance.opening_cents)}</strong></div>
+     <div className="cash-line"><span>Ventas en efectivo de mostrador</span><strong>+{money(dayBalance.counter_sales_cents)}</strong></div>
+     <div className="cash-line"><span>Reparto cobrado directamente en Caja</span><strong>+{money(dayBalance.direct_delivery_cents)}</strong></div>
+     <div className="cash-line"><span>Liquidaciones y entregas recibidas</span><strong>+{money(dayBalance.received_handoffs_cents)}</strong></div>
+     <div className="cash-line"><span>Sencillo entregado a repartidores</span><strong>−{money(dayBalance.float_out_cents)}</strong></div>
+     <div className="cash-line"><span>Retiros directos</span><strong>−{money(dayBalance.withdrawals_cents)}</strong></div>
+     <div className="cash-line"><span>Gastos pagados desde Caja</span><strong>−{money(dayBalance.cash_expenses_cents)}</strong></div>
+     <div className="cash-line cash-line-total"><span>Efectivo esperado</span><strong>{money(dayBalance.expected_cents)}</strong></div>
+     <div className="cash-included"><strong>Ya descontadas en la liquidación</strong><div className="cash-line"><span>Compras personales</span><span>{money(dayBalance.personal_purchases_cents)}</span></div><div className="cash-line"><span>Compras del negocio</span><span>{money(dayBalance.business_purchases_cents)}</span></div><small>Son retiros personales o gastos del negocio. No se descuentan otra vez del cajón.</small></div>
+     {day?.status==='closed'&&<div className="cash-included"><div className="cash-line"><span>Efectivo contado</span><strong>{money(dayBalance.counted_cents??0)}</strong></div><div className="cash-line"><span>Diferencia de Caja</span><strong>{money(dayBalance.drawer_difference_cents??0)}</strong></div><div className="cash-line"><span>Retiro final del dueño</span><strong>{money(dayBalance.owner_withdrawal_cents??0)}</strong></div></div>}
+    </>:<p>{balanceError||'Sin desglose disponible.'}</p>}
+   </div></details>
+   <details className="cash-disclosure"><summary><span>Pendientes e incidencias acumulados</span><span aria-hidden="true">+</span></summary><div className="cash-disclosure-body"><div className="cash-line"><span>Clientes con saldo pendiente</span><strong>{overview?money(overview.pending_cents):'—'}</strong></div><div className="cash-line"><span>Incidencias abiertas</span><strong>{overview?.open_issues??'—'}</strong></div><small>Estos datos incluyen jornadas anteriores.</small></div></details>
   </div>
-  <div className="cash-card"><h3>Cobros y entregas acumulados</h3><p>Estos acumulados no representan el saldo del cajón ni una deuda del repartidor. Para cerrar, usá la conciliación de la jornada de arriba.</p>
-   <div className="cash-table-wrap"><table><thead><tr><th>Persona</th><th>Cobrado</th><th>Entregado</th></tr></thead><tbody>{positions.filter(x=>x.user_id!==currentUser).map(x=><tr key={x.user_id}><td>{x.display_name}</td><td>{money(x.collected_cents)}</td><td>{money(x.handed_off_cents)}</td></tr>)}</tbody></table></div>
-   {!positions.some(x=>x.user_id!==currentUser)&&<p>No hay repartidores con movimientos registrados.</p>}
-   <small>Las liquidaciones trasladan efectivo; no representan ventas adicionales.</small>
+
+  <div hidden={tab!=='drivers'||action!==null}>
+   <UnifiedSettlement onChanged={()=>void load()} onSummary={onSettlementSummary} refreshSignal={refreshSignal} cashDayStatus={day?.status}/>
   </div>
-  {day?.status==='open'&&<div className="cash-card"><h3>Entrega de efectivo de otro responsable</h3><p>Usá esta entrega para cobros de otros responsables. El efectivo de repartidores se recibe únicamente mediante la liquidación de arriba.</p>
+
+  <div className="cash-history" hidden={tab!=='history'||action!==null}>
+   <section className="cash-card"><div className="cash-section-head"><div><p className="cash-eyebrow">EFECTIVO RECIBIDO</p><h2>Últimas entregas</h2></div></div>
+    {!handoffs.length?<p>No hay entregas registradas.</p>:<div className="cash-ledger">{handoffs.map(h=><details className="cash-ledger-entry" key={h.id}><summary><span><strong>{positions.find(p=>p.user_id===h.from_user_id)?.display_name||'Responsable'}</strong><small>{new Date(h.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></span><strong>{money(h.amount_cents)}</strong></summary><p>{h.note||'Sin nota.'}</p></details>)}</div>}
+   </section>
+   <details className="cash-disclosure"><summary><span>Cobros y entregas acumulados</span><span aria-hidden="true">+</span></summary><div className="cash-disclosure-body"><p>Son movimientos históricos, no el saldo del cajón ni una deuda del repartidor.</p>{positions.filter(x=>x.user_id!==currentUser).map(x=><div className="cash-history-person" key={x.user_id}><strong>{x.display_name}</strong><div className="cash-line"><span>Cobrado</span><span>{money(x.collected_cents)}</span></div><div className="cash-line"><span>Entregado</span><span>{money(x.handed_off_cents)}</span></div></div>)}{!positions.some(x=>x.user_id!==currentUser)&&<p>Sin movimientos registrados.</p>}</div></details>
+   {day?.status==='open'&&<button className="cash-secondary" onClick={()=>setAction('handoff')}>Recibir efectivo de otro responsable →</button>}
+  </div>
+
+  <section className="cash-card cash-action-panel" hidden={action!=='handoff'} aria-label="Entrega de otro responsable">
+   <div className="cash-section-head"><h2>Recibir efectivo</h2><button className="cash-text-button" onClick={()=>setAction(null)}>Volver</button></div>
+   <p>Para cobros de otros responsables. Los repartidores usan su liquidación.</p>
    <label>Persona que entrega<select value={source} disabled={busy||!!attempt.current} onChange={e=>setSource(e.target.value)}><option value="">Seleccionar persona</option>{positions.filter(x=>x.user_id!==currentUser&&!driverIds.includes(x.user_id)&&Number(x.remaining_cents)>0).map(x=><option key={x.user_id} value={x.user_id}>{x.display_name} · {money(x.remaining_cents)}</option>)}</select></label>
    <label>Monto recibido (Q)<input inputMode="decimal" value={amount} disabled={busy||!!attempt.current} onChange={e=>setAmount(e.target.value)} placeholder="0.00"/></label>
-   <label>Nota (opcional)<input maxLength={250} value={note} disabled={busy||!!attempt.current} onChange={e=>setNote(e.target.value)} placeholder="Ej. efectivo de la tarde"/></label>
+   <label>Nota (opcional)<input maxLength={250} value={note} disabled={busy||!!attempt.current} onChange={e=>setNote(e.target.value)} placeholder="Motivo de la entrega"/></label>
    <button className="cash-primary" disabled={!canSubmit} onClick={()=>void submit()}>{busy?'Registrando…':'Confirmar efectivo recibido'}</button>
-   {attempt.current&&<p className="cash-error">Solicitud incierta: comprobá el historial antes de otra operación.</p>}
-   <small>Este registro no altera ventas ni cobros originales.</small>
-  </div>}
-  <div className="cash-card"><h3>Últimas entregas de efectivo</h3>{!handoffs.length?<p>Todavía no hay entregas registradas.</p>:<div className="cash-table-wrap"><table><thead><tr><th>Fecha</th><th>De</th><th>Importe</th><th>Nota</th></tr></thead><tbody>{handoffs.map(h=><tr key={h.id}><td>{new Date(h.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala'})}</td><td>{positions.find(p=>p.user_id===h.from_user_id)?.display_name||h.from_user_id.slice(0,8)}</td><td>{money(h.amount_cents)}</td><td>{h.note||'—'}</td></tr>)}</tbody></table></div>}</div>
-  <p className="cash-footnote">El cierre conserva el desglose, el conteo y las diferencias. Las devoluciones de mercadería sin cobro no producen movimientos de efectivo.</p>
+   {attempt.current&&<p className="cash-error">Resultado incierto. Conservamos los datos para reintentar sin duplicar.</p>}
+  </section>
  </section>;
 }

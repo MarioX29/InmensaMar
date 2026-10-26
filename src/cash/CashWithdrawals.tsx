@@ -5,7 +5,9 @@ type CashDay={id:string;business_date:string;status:'open'|'closed';opening_floa
 type Withdrawal={id:string;cash_day_id:string;amount_cents:number;note:string|null;created_at:string;recorded_by:string;source_errand_id:string|null};
 const money=(n:number)=>`Q ${(n/100).toFixed(2)}`;
 const err=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'Error inesperado';
-export function CashWithdrawals({onChanged,cashDay}:{onChanged?:()=>void;cashDay?:{id:string;status:string}|null}){
+export function CashWithdrawals({onChanged,cashDay,mode,onCancel}:{onChanged?:()=>void;cashDay?:{id:string;status:string}|null;mode?:'form'|'history';onCancel?:()=>void}){
+ const [localFormOpen,setLocalFormOpen]=useState(false);
+ const formOpen=mode==='form'||localFormOpen;
  const [day,setDay]=useState<CashDay|null>(null);
  const [rows,setRows]=useState<Withdrawal[]>([]);
  const [amount,setAmount]=useState('');const [note,setNote]=useState('');
@@ -41,20 +43,28 @@ export function CashWithdrawals({onChanged,cashDay}:{onChanged?:()=>void;cashDay
   }catch(e){setError(err(e)+' Resultado incierto: verificá el historial antes de reintentar.');}
   finally{setBusy(false);}
  }
- return <div className="cash-card"><h3>Registrar retiro</h3>
-  <p>Registrá únicamente efectivo que sale directamente de Caja. Las compras personales de reparto aparecen automáticamente al liquidar; no las registrés otra vez.</p>
-  {!day?<p>No hay jornada registrada.</p>:day.status!=='open'?<p>La jornada está cerrada. No se permiten retiros.</p>:<>
-   <label>Monto (Q)<input inputMode="decimal" value={amount} disabled={busy||!!attempt.current} onChange={e=>setAmount(e.target.value)} placeholder="Ej. 500.00"/></label>
-   <label>Nota (opcional)<input maxLength={250} value={note} disabled={busy||!!attempt.current} onChange={e=>setNote(e.target.value)} placeholder="Motivo del retiro"/></label>
-   <button className="cash-primary" disabled={!valid} onClick={()=>void submit()}>{busy?'Registrando…':'Confirmar retiro'}</button>
+ return <section className={`cash-card cash-withdrawals${formOpen?' cash-action-panel':''}`} aria-label="Retiros de Caja">
+  <div className="cash-section-head"><div><p className="cash-eyebrow">{formOpen?'SALIDA DE EFECTIVO':'ESTA JORNADA'}</p><h2>{formOpen?'Retirar efectivo':'Retiros'}</h2></div>
+   {formOpen?<button className="cash-text-button" onClick={()=>{setLocalFormOpen(false);onCancel?.();}}>Volver</button>:mode===undefined&&day?.status==='open'?<button className="cash-secondary" onClick={()=>setLocalFormOpen(true)}>Retirar efectivo</button>:null}
+  </div>
+  {formOpen&&<>
+   <p>Registrá lo que sale directamente de Caja. Las compras personales del repartidor ya se registran al liquidar.</p>
+   {!day?<p>No hay jornada registrada.</p>:day.status!=='open'?<p>La jornada está cerrada. No se permiten retiros.</p>:<>
+    <label htmlFor="cash-withdraw-amount">Monto (Q)<input id="cash-withdraw-amount" className="cash-amount-input" inputMode="decimal" value={amount} disabled={busy||!!attempt.current} onChange={e=>setAmount(e.target.value)} placeholder="0.00"/></label>
+    <label htmlFor="cash-withdraw-note">Nota (opcional)<input id="cash-withdraw-note" maxLength={250} value={note} disabled={busy||!!attempt.current} onChange={e=>setNote(e.target.value)} placeholder="¿Para qué es el retiro?"/></label>
+    <button className="cash-primary" disabled={!valid} onClick={()=>void submit()}>{busy?'Registrando…':attempt.current?'Reintentar el mismo retiro':'Confirmar retiro'}</button>
+   </>}
   </>}
   {error&&<p className="cash-error" role="alert">{error}</p>}{notice&&<p className="cash-notice" role="status">{notice}</p>}
-  {attempt.current&&<p className="cash-error">Si el resultado fue incierto, verificá el historial antes de registrar otro retiro.</p>}
-  <h3>Retiros de la jornada</h3>
-  <div className="cash-stats"><article><small>Retiros directos + compras personales de reparto</small><strong>{money(rows.reduce((s,r)=>s+Number(r.amount_cents),0))}</strong></article></div>
-  {!rows.length?<p>No hay retiros registrados.</p>:<div className="cash-table-wrap"><table><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th><th>Registrado por</th></tr></thead><tbody>
-   {rows.map(r=><tr key={r.id}><td>{new Date(r.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala'})}</td><td>{money(r.amount_cents)}</td><td>{r.note||'—'}{r.source_errand_id&&<small> · descontada en liquidación</small>}</td><td>{r.recorded_by.slice(0,8)}</td></tr>)}
-  </tbody></table></div>}
-  <button onClick={()=>void load()} disabled={busy}>Actualizar retiros</button>
- </div>;
+  {attempt.current&&<p className="cash-error">Resultado incierto. Verificá el registro o reintentá con los mismos datos; no generés otro retiro.</p>}
+  {!formOpen&&<>
+   <div className="cash-line"><span>Retiros directos</span><strong>{money(rows.filter(r=>!r.source_errand_id).reduce((s,r)=>s+Number(r.amount_cents),0))}</strong></div>
+   <div className="cash-line"><span>Compras personales de reparto</span><strong>{money(rows.filter(r=>!!r.source_errand_id).reduce((s,r)=>s+Number(r.amount_cents),0))}</strong></div>
+   {!rows.length?<p className="cash-empty">No hay retiros en esta jornada.</p>:<div className="cash-ledger">{rows.map(r=><details className="cash-ledger-entry" key={r.id}>
+    <summary><span><strong>{r.note||'Retiro de efectivo'}</strong><small>{new Date(r.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})} · {r.source_errand_id?'Compra personal':'Retiro directo'}</small></span><strong>{money(r.amount_cents)}</strong></summary>
+    <p>{r.source_errand_id?'Ya descontada del efectivo recibido en la liquidación.':'Salida directa de Caja.'}</p><small>Registrado por: {r.recorded_by.slice(0,8)}</small>
+   </details>)}</div>}
+   <button className="cash-text-button" onClick={()=>void load()} disabled={busy}>Actualizar retiros</button>
+  </>}
+ </section>;
 }
