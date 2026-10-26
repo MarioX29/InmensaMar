@@ -21,6 +21,8 @@ const message=(error:unknown)=>{
 };
 
 export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|'driver'}){
+  const [stage,setStage]=useState('all');
+  const [search,setSearch]=useState('');
   const [view,setView]=useState<'customer'|'counter'>('counter');
   const [products,setProducts]=useState<Product[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
@@ -224,29 +226,26 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
   }
   const activeOrders=orders.filter(o=>activeStatuses.includes(o.status)).sort((a,b)=>a.created_at.localeCompare(b.created_at));
   const historyOrders=orders.filter(o=>!activeStatuses.includes(o.status));
-  const visibleOrders=orderFilter==='active'?activeOrders:historyOrders;
+  const visibleOrders=(orderFilter==='active'?activeOrders:historyOrders).filter(o=>(orderFilter==='history'||stage==='all'||(stage==='preparing'?['accepted','preparing'].includes(o.status):o.status===stage))&&`${o.customer_name} ${o.customer_phone} ${o.id} ${o.delivery_address}`.toLowerCase().includes(search.trim().toLowerCase()));
   return <div className="orders-module">
-    <div className="op-main"><div className="op-head"><div><h1>Pedidos</h1><p>Recepción y aceptación de pedidos de prueba.</p></div><button className="op-outline" onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
-      <div className="op-tabs"><button className={view==='customer'?'on':''} onClick={()=>setView('customer')}>Crear pedido de prueba</button><button className={view==='counter'?'on':''} onClick={()=>setView('counter')}>Pedidos ({activeOrders.length})</button></div>
-      <p className="op-caution">Solo para pruebas internas. La tienda pública para clientes todavía no está habilitada.</p>
+    <div className="op-main"><div className="op-head"><div><h1>Pedidos</h1><p>Del pedido recibido a la entrega.</p></div><button className="op-outline" onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
+      <div className="op-tabs" aria-label="Vistas de pedidos"><button className={view==='counter'&&orderFilter==='active'?'on':''} onClick={()=>{setView('counter');setOrderFilter('active')}}>Activos ({activeOrders.length})</button><button className={view==='counter'&&orderFilter==='history'?'on':''} onClick={()=>{setView('counter');setOrderFilter('history')}}>Historial</button><button className={view==='customer'?'on':''} onClick={()=>setView('customer')}>Nuevo pedido</button></div>
+      <details className="feature-note"><summary>Pedidos internos de prueba</summary><p>La tienda pública para clientes todavía no está habilitada.</p></details>
       {error&&<div className="op-error" role="alert">{error}<button onClick={()=>setError('')}>Cerrar</button></div>}
       {notice&&<div className="op-success" role="status">{notice}<button onClick={()=>setNotice('')}>Cerrar</button></div>}
       {view==='customer'?<div className="op-columns"><section><h2>Productos</h2><div className="op-products">{products.map(p=>{
         const qty=items.find(x=>x.variant_id===p.id)?.quantity||0;const increment=p.unit==='lb'?0.5:1;
         return <div className="op-product" key={p.id}><div><strong>{p.name}</strong><small>{cash(p.price_cents)} / {units[p.unit]} · {p.stock} disponibles</small></div><div className="op-qty"><button aria-label={'Quitar '+p.name} onClick={()=>adjust(p,-increment)} disabled={busy||qty===0}>−</button><span>{qty}</span><button aria-label={'Agregar '+p.name} onClick={()=>adjust(p,increment)} disabled={busy||qty+increment>p.stock}>+</button></div></div>;
       })}</div></section><form className="op-form" onSubmit={e=>void submit(e)}><h2>Datos del pedido</h2><label>Nombre<input value={name} onChange={e=>setName(e.target.value)} minLength={2} maxLength={120} required/></label><label>Teléfono<input value={phone} onChange={e=>setPhone(e.target.value)} minLength={8} maxLength={22} required/></label><label>Dirección de entrega<textarea value={address} onChange={e=>setAddress(e.target.value)} minLength={5} maxLength={300} required rows={2}/></label><label>Indicaciones (opcional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} maxLength={500} rows={2}/></label><div className="op-total"><span>Total estimado</span><strong>{cash(total)}</strong></div><button className="op-primary" disabled={busy||items.length===0}>{busy?'Enviando…':'Crear pedido de prueba'}</button><small>El inventario se reserva únicamente cuando mostrador acepta el pedido.</small></form></div>
-      :<><div className="op-filter-tabs" role="group" aria-label="Filtrar pedidos">
-        <button className={orderFilter==='active'?'on':''} onClick={()=>setOrderFilter('active')}>Activos ({activeOrders.length})</button>
-        <button className={orderFilter==='history'?'on':''} onClick={()=>setOrderFilter('history')}>Historial ({historyOrders.length})</button>
-      </div>{orderFilter==='active'&&staffRole!=='driver'&&readyToDispatch.length>0&&<section className="op-dispatch-box" aria-label="Enviar pedidos listos a reparto">
+      :<><div className="order-work-toolbar"><label className="module-search"><span className="sr-only">Buscar pedidos</span><input type="search" placeholder="Buscar cliente, teléfono o pedido" value={search} onChange={e=>setSearch(e.target.value)}/></label></div>{orderFilter==='active'&&<div className="order-stages" aria-label="Etapas del pedido">{([['all','Todos'],['received','Recibidos'],['preparing','En preparación'],['ready','Listos'],['out_for_delivery','En reparto']] as const).map(([id,label])=><button key={id} aria-pressed={stage===id} onClick={()=>setStage(id)}>{label}<span>{id==='all'?activeOrders.length:activeOrders.filter(o=>id==='preparing'?['accepted','preparing'].includes(o.status):o.status===id).length}</span></button>)}</div>}{orderFilter==='active'&&staffRole!=='driver'&&readyToDispatch.length>0&&<details className="work-disclosure order-dispatch-disclosure"><summary><strong>Enviar pedidos a reparto</strong><span>{selectedForDispatch.length?`${selectedForDispatch.length} seleccionados`: `${readyToDispatch.length} listos`} →</span></summary><section className="op-dispatch-box" aria-label="Enviar pedidos listos a reparto">
         <div><strong>Enviar pedidos a reparto</strong><p>Seleccioná los pedidos listos y elegí quién los lleva. Al confirmar, salen del local.</p></div>
         <div className="op-dispatch-options">
           <label>Repartidor<select value={driverId} disabled={busy||!!dispatchAttempt} onChange={e=>setDriverId(e.target.value)}><option value="">Elegí repartidor</option>{drivers.map(d=><option key={d.user_id} value={d.user_id}>{d.display_name}</option>)}</select></label>
           <div className="op-dispatch-actions"><span>{selectedForDispatch.length} seleccionados</span><button className="op-primary" type="button" disabled={busy||!driverId||!selectedForDispatch.length} onClick={()=>void sendToDelivery()}>{busy?'Enviando…':`Enviar ${selectedForDispatch.length} a reparto`}</button></div>
         </div>
         {dispatchAttempt&&<small className="op-dispatch-note">Si el envío anterior falló o quedó incierto, verificá Reparto antes de volver a intentar. No cambiés la selección.</small>}
-      </section>}<section className="op-orders">{visibleOrders.length===0?<p className="op-empty">{orderFilter==='active'?'No hay pedidos pendientes.':'No hay pedidos en el historial reciente.'}</p>:visibleOrders.map(o=><article className="op-order" key={o.id}><div className="op-orderhead"><strong>{orderFilter==='active'&&staffRole!=='driver'&&o.status==='ready'&&!assignments.some(a=>a.order_id===o.id)&&<label className="op-dispatch-check"><input type="checkbox" aria-label={`Seleccionar pedido ${o.id.slice(0,8)}`} checked={selectedForDispatch.includes(o.id)} disabled={busy||!!dispatchAttempt} onChange={e=>setChosen(prev=>e.target.checked?[...prev,o.id]:prev.filter(id=>id!==o.id))}/></label>}#{o.id.slice(0,8)} · {o.customer_name}</strong><span>{({received:'Recibido',accepted:'Aceptado',preparing:'En preparación',ready:'Listo',out_for_delivery:'En reparto',delivered:'Entregado',cancelled:'Cancelado'} as Record<string,string>)[o.status]||o.status}</span></div><p>{o.customer_phone} · {o.delivery_address}</p>
-        <div className="op-order-items"><strong>Productos solicitados</strong>
+      </section></details>}<section className="op-orders">{visibleOrders.length===0?<p className="op-empty">{search.trim()||orderFilter==='active'&&stage!=='all'?'No hay pedidos con estos filtros.':orderFilter==='active'?'No hay pedidos pendientes.':'No hay pedidos en el historial reciente.'}</p>:visibleOrders.map(o=><article className="op-order" key={o.id}><div className="op-orderhead"><strong>{orderFilter==='active'&&staffRole!=='driver'&&o.status==='ready'&&!assignments.some(a=>a.order_id===o.id)&&<label className="op-dispatch-check"><input type="checkbox" aria-label={`Seleccionar pedido ${o.id.slice(0,8)}`} checked={selectedForDispatch.includes(o.id)} disabled={busy||!!dispatchAttempt} onChange={e=>setChosen(prev=>e.target.checked?[...prev,o.id]:prev.filter(id=>id!==o.id))}/></label>}#{o.id.slice(0,8)} · {o.customer_name}</strong><span>{({received:'Recibido',accepted:'Aceptado',preparing:'En preparación',ready:'Listo',out_for_delivery:'En reparto',delivered:'Entregado',cancelled:'Cancelado'} as Record<string,string>)[o.status]||o.status}</span></div><p>{o.customer_phone} · {o.delivery_address}</p>
+        <details className="op-order-detail" open={orderFilter==='active'}><summary>Productos del pedido</summary><div className="op-order-items">
           {orderLines.filter(l=>l.order_id===o.id).length===0
             ? <p className="op-item-missing">No se encontró el detalle de este pedido. Verificá antes de prepararlo.</p>
             : orderLines.filter(l=>l.order_id===o.id).map(l=>{
@@ -257,8 +256,8 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
                   <strong>{cash(Number(l.line_total_cents))}</strong>
                 </div>;
               })}
-        </div>
-        {o.notes&&<p className="op-notes"><strong>Indicaciones:</strong> {o.notes}</p>}<div className="op-orderfoot"><strong>{cash(Number(o.total_cents))}</strong><small>{new Date(o.created_at).toLocaleString('es-GT')}</small></div><div className="op-actions">
+        </div></details>
+        {o.notes&&<p className="op-notes"><strong>Indicaciones:</strong> {o.notes}</p>}<div className="op-orderfoot"><strong>{cash(Number(o.total_cents))}</strong><small>{new Date(o.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></div><div className="op-actions">
         {o.status==='received'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'accept')}>Aceptar pedido</button>}
         {o.status==='accepted'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'prepare')}>Continuar preparación (pedido anterior)</button>}
         {o.status==='preparing'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'ready')}>Marcar listo</button>}
