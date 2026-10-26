@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ShoppingBasket, Package, ClipboardList, BarChart3, Search, Plus, Minus, X, Check, RefreshCw, Truck, Wallet } from 'lucide-react';
+import { ShoppingBasket, Package, ClipboardList, BarChart3, Search, Plus, Minus, X, Check, RefreshCw, Truck, Wallet, Menu } from 'lucide-react';
 import { AuthGate } from './auth/AuthGate';
 import { supabase } from './lib/supabase';
 import { errorMessage, isDefinitiveStockRejection } from './lib/checkoutErrors';
@@ -9,9 +9,11 @@ import './styles.css';
 import { OrdersPanel } from './orders/OrdersPanel';
 import { DeliveryPanel } from './delivery/DeliveryPanel';
 import { CashPanel } from './cash/CashPanel';
+import { InventoryPanel } from './inventory/InventoryPanel';
 import { AdminPanel } from './admin/AdminPanel';
 import { CashOpening } from './cash/CashOpening';
 import { NotificationSetup } from './notifications/NotificationSetup';
+import './design-system.css';
 
 type Product = { id: string; name: string; family: string; unit: 'lb'|'unit'|'package'; priceCents: number; stock: number };
 type Line = { id: string; qty: number };
@@ -45,6 +47,25 @@ function friendlyError(message:string) {
   return `No se completó la operación: ${message}`;
 }
 function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver';userId?:string}) {
+  const [moreOpen,setMoreOpen]=useState(false);
+  const moreMenu=useRef<HTMLElement|null>(null);
+  useEffect(()=>{
+    if(!moreOpen)return;
+    const panel=moreMenu.current;
+    panel?.querySelector<HTMLButtonElement>('button')?.focus();
+    const handleKey=(event:KeyboardEvent)=>{
+      if(event.key==='Escape'){setMoreOpen(false);document.querySelector<HTMLButtonElement>('[aria-controls="more-navigation"]')?.focus();}
+      if(event.key==='Tab'&&panel){
+        const buttons=Array.from(panel.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+        const first=buttons[0],last=buttons[buttons.length-1];
+        if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+        else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+      }
+    };
+    window.addEventListener('keydown',handleKey);
+    return()=>window.removeEventListener('keydown',handleKey);
+  },[moreOpen]);
+  const [adminStart,setAdminStart]=useState<'owner'|'operations'>('owner');
   const [page,setPage]=useState<Page>(staffRole==='driver'?'reparto':'vender');
   const [products,setProducts]=useState<Product[]>([]);
   const [sales,setSales]=useState<Sale[]>([]);
@@ -265,9 +286,11 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
   }
   const filtered=products.filter(p=>(category==='Todos'||p.family===category)&&p.name.toLowerCase().includes(query.toLowerCase()));
   const allNav:[Page,string,React.ReactNode][]=[['vender','Vender',<ShoppingBasket size={19}/>],['pedidos','Pedidos',<ClipboardList size={19}/>],['reparto','Reparto',<Truck size={19}/>],['caja','Caja',<Wallet size={19}/>],['inventario','Inventario',<Package size={19}/>],['resumen','Resumen',<BarChart3 size={19}/>],['administracion','Administración',<Package size={19}/>]];
-  const nav = allNav.filter(([id])=>staffRole==='admin'||(staffRole==='driver'?id==='reparto':id!=='resumen'));
+  const nav = allNav.filter(([id])=>staffRole==='admin'||(staffRole==='driver'?id==='reparto':id!=='resumen'&&id!=='administracion'));
+  const mobileNav=nav.filter(([id])=>['vender','pedidos','reparto','caja'].includes(id));
+  const moreNav=nav.filter(([id])=>!['vender','pedidos','reparto','caja'].includes(id));
   const cartPanel=<section className="cart">
-    <div className="cart-title"><strong>Venta actual</strong><button className="mobile-only icon-btn" aria-label="Cerrar carrito" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>
+    <div className="cart-title"><div><small>EN MOSTRADOR</small><strong>Venta actual</strong></div><button className="mobile-only icon-btn" aria-label="Cerrar carrito" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>
     {cart.length?cart.map(({line,product})=>{
       const selectedUnit=product.unit==='lb'?(quantityUnits[product.id]||'lb'):'lb';
       const displayed=selectedUnit==='oz'?line.qty*16:line.qty;
@@ -294,25 +317,25 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
           <button className="remove-line" type="button" disabled={busy||!!pending} onClick={()=>removeLine(product.id)} aria-label={`Quitar ${product.name}`}>Quitar</button>
         </div>
       </div>;
-    }):<p className="empty">Agregá productos para comenzar.</p>}
-    <div className="cart-checkout">
+    }):<p className="empty">Elegí un producto para comenzar la venta.</p>}
+    {(lines.length>0||pending)&&<div className="cart-checkout">
       <div className="total"><span>Total estimado</span><strong>{money(totalCents)}</strong></div>
       <label htmlFor="cash">Efectivo recibido (Q)</label>
       <input id="cash" type="number" inputMode="decimal" min="0" step="0.01" value={pending?(pending.cashCents/100).toFixed(2):cash} disabled={busy||!!pending} onChange={e=>setCash(e.target.value)} placeholder="0.00"/>
       <button className="exact-payment" type="button" disabled={busy||!!pending||!cart.length} onClick={setExactCash}>Pago exacto · {money(totalCents)}</button>
       {cash.trim()&&Number.isFinite(Number(cash))&&Math.round(Number(cash)*100)>=totalCents&&<small>Vuelto: {money(Math.round(Number(cash)*100)-totalCents)}</small>}
       <button className="primary" disabled={busy||!!pending||!cart.length||staleLines.length>0} onClick={()=>void checkout()}><Check size={17}/>{busy?'Guardando…':'Registrar venta y cobro'}</button>
-      <small>Operaciones de prueba conectadas a Supabase. Solo efectivo en esta versión.</small>
-    </div>
+      <small>Comprobá el dinero recibido antes de confirmar. Pago en efectivo.</small>
+    </div>}
   </section>;
-  return <div className="shell"><header className="top"><div className="brand"><span className="mark">IM</span><div><strong>Inmensa Mar</strong><small>Operación</small></div></div><div className="top-actions"><span className="demo">ENTORNO DE PRUEBA</span><NotificationSetup/></div></header><div className="workspace"><aside className="sidebar"><div className="side-label">OPERACIÓN</div>{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}{label}</button>)}</aside><main className="main">
+  return <div className="shell"><header className="top"><div className="brand"><span className="mark">IM</span><div><strong>Inmensa Mar</strong><small>Operación diaria</small></div></div><div className="top-actions"><span className="demo">ENTORNO DE PRUEBA</span><NotificationSetup/></div></header><div className="workspace"><aside className="sidebar"><div className="side-label">OPERACIÓN</div>{nav.map(([id,label,icon])=><button key={id} aria-current={page===id?'page':undefined} className={page===id?'active':''} onClick={()=>{if(id==='administracion')setAdminStart('owner');setPage(id);setCartOpen(false);setMoreOpen(false)}}>{icon}{label}</button>)}</aside><main className="main">
     <CashOpening staffRole={staffRole}/>
-    <div className="heading heading-actions"><div><h1>{page==='vender'?'Nueva venta':page==='inventario'?'Inventario':page==='administracion'?'Administración':page==='resumen'?'Resumen':page==='reparto'?'Reparto':page==='caja'?'Caja':'Pedidos'}</h1><p>{page==='vender'?'Seleccioná productos y registrá el cobro en Supabase.':page==='inventario'?'Existencias disponibles por variante.':page==='resumen'?'Ventas registradas en la base de datos.':page==='reparto'?'Asignación de rutas y pedidos listos.':page==='caja'?'Control de efectivo y liquidaciones de reparto.':'Recepción y preparación de pedidos.'}</p></div><button className="refresh-btn" onClick={()=>void refresh()} disabled={busy}><RefreshCw size={16}/> Actualizar</button></div>
+    {page!=='caja'&&page!=='pedidos'&&<div className="heading heading-actions"><div><h1>{page==='vender'?'Nueva venta':page==='inventario'?'Inventario':page==='administracion'?'Administración':page==='resumen'?'Resumen':page==='reparto'?'Reparto':'Pedidos'}</h1><p>{page==='vender'?'Elegí productos. Revisá la venta. Registrá el cobro.':page==='inventario'?'Disponibilidad de productos y presentaciones.':page==='resumen'?'Ventas registradas en la base de datos.':page==='reparto'?'Salidas, entregas y seguimiento del día.':page==='administracion'?'Tu negocio y las herramientas para administrarlo.':'Recepción y preparación de pedidos.'}</p></div><button className="refresh-btn" onClick={()=>void refresh()} disabled={busy}><RefreshCw size={16}/> Actualizar</button></div>}
     {error&&<div className="error-panel" role="alert">{error}<button className="dismiss-error" type="button" onClick={()=>setError('')} aria-label="Cerrar error"><X size={16}/></button>{pending&&<p>Hay una operación pendiente de verificar. No iniciés otra venta hasta resolverla.</p>}</div>}
     {receipt&&<div className="receipt-panel" role="status"><strong>Venta y cobro confirmados</strong><span>Venta #{receipt.saleId.slice(0,8)} · Total {money(receipt.totalCents)} · Efectivo {money(receipt.cashCents)} · Vuelto {money(receipt.cashCents-receipt.totalCents)}</span><button className="dismiss-error" type="button" aria-label="Cerrar confirmación" onClick={()=>setReceipt(null)}><X size={16}/></button></div>}
     {pending&&<div className="warning-panel">Hay una operación pendiente. Verificá primero su estado en Supabase. <button type="button" disabled={busy||checkingPending} onClick={()=>void verifyPending()}>{checkingPending?'Verificando…':'Verificar operación pendiente'}</button> <button type="button" disabled={busy||checkingPending} onClick={()=>void discardUnregisteredPending()}>Descartar intento sin venta</button>{pending.saleId&&<div className="recover-payment"><strong>Venta existente · Cobro por revisar</strong><p>Solo completá el pago si ya recibiste el efectivo. No se volverá a registrar la venta ni a descontar inventario.</p><label><input type="checkbox" checked={recoveryConfirm} disabled={busy||checkingPending} onChange={e=>setRecoveryConfirm(e.target.checked)}/> Confirmo que recibí el efectivo indicado en el intento original.</label><button type="button" disabled={!recoveryConfirm||busy||checkingPending} onClick={()=>void completeRecoveredPayment()}>Completar cobro pendiente</button></div>}</div>}
-    {page==='pedidos'?<OrdersPanel staffRole={staffRole}/>:page==='reparto'?<DeliveryPanel staffRole={staffRole}/>:page==='caja'?<CashPanel staffRole={staffRole}/>:page==='administracion'?<AdminPanel onChanged={refresh}/>:loading?<p className="empty">Cargando datos de Supabase…</p>:page==='vender'?<div className="pos"><section className="catalog"><div className="search"><Search size={18}/><input aria-label="Buscar productos" placeholder="Buscar producto" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="filters">{categories.map(c=><button key={c} className={category===c?'selected':''} onClick={()=>setCategory(c)}>{c}</button>)}</div><div className="product-list">{filtered.map(p=><div className="product" key={p.id}><div className="product-info"><strong>{p.name}</strong><small>{p.stock<=0?'Agotado':`${p.stock} ${units[p.unit]} disponibles`}</small></div><div className="product-action"><b>{money(p.priceCents)}<small>/{units[p.unit]}</small></b><button aria-label={`Agregar ${p.name}`} disabled={busy||!!pending||p.stock<=0} onClick={()=>add(p)}><Plus size={19}/></button></div></div>)}{!filtered.length&&<p className="empty">No hay productos disponibles. Cargá datos de prueba en Supabase.</p>}</div></section><div className="desktop-cart">{cartPanel}</div></div>:page==='inventario'?<div className="table-wrap"><table><thead><tr><th>Producto</th><th>Unidad</th><th>Precio</th><th>Disponible</th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td>{p.name}</td><td>{units[p.unit]}</td><td>{money(p.priceCents)}</td><td>{p.stock}</td></tr>)}</tbody></table></div>:page==='resumen'?<><div className="stats"><div><small>Últimas ventas</small><strong>{sales.length}</strong></div><div><small>Total registrado (últimas 100)</small><strong>{money(sales.reduce((s,x)=>s+Number(x.total_cents),0))}</strong></div></div><div className="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Total</th></tr></thead><tbody>{sales.map(s=><tr key={s.id}><td>{s.id.slice(0,8)}</td><td>{new Date(s.created_at).toLocaleString('es-GT')}</td><td>{money(Number(s.total_cents))}</td></tr>)}</tbody></table>{!sales.length&&<p className="empty">No hay ventas todavía.</p>}</div></>:<div className="placeholder"><ClipboardList size={28}/><strong>Próxima fase</strong><p>Los pedidos online todavía no están habilitados.</p></div>}
-    </main></div>{page==='vender'&&(lines.length>0||pending)&&<button className="mobile-cart-trigger" onClick={()=>setCartOpen(true)}><span>{pending?'Cobro pendiente':`Venta actual · ${lines.length} productos`}</span><strong>{money(totalCents)} →</strong></button>}{cartOpen&&page==='vender'&&<div className="drawer-backdrop" onClick={()=>setCartOpen(false)}><div className="drawer" onClick={e=>e.stopPropagation()}>{cartPanel}</div></div>}<nav className="bottom-nav">{nav.map(([id,label,icon])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false)}}>{icon}<span>{label}</span></button>)}</nav>{notice&&<div className="notice" role="status"><span>{notice}</span><button aria-label="Cerrar aviso" onClick={()=>setNotice('')}><X size={16}/></button></div>}</div>;
+    {page==='pedidos'?<OrdersPanel staffRole={staffRole}/>:page==='reparto'?<DeliveryPanel staffRole={staffRole}/>:page==='caja'?<CashPanel staffRole={staffRole}/>:page==='administracion'?<AdminPanel onChanged={refresh} initialSection={adminStart}/>:loading?<p className="empty">Cargando datos de Supabase…</p>:page==='vender'?<div className="pos"><section className="catalog"><div className="search"><Search size={18}/><input aria-label="Buscar productos" placeholder="¿Qué vamos a vender?" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="filters">{categories.map(c=><button key={c} className={category===c?'selected':''} onClick={()=>setCategory(c)}>{c}</button>)}</div><div className="product-list">{filtered.map(p=><div className="product" key={p.id}><div className="product-info">{!p.name.toLowerCase().includes(p.family.toLowerCase())&&<small className="product-family">{p.family}</small>}<strong>{p.name}</strong><small>{p.stock<=0?'Agotado':`${p.stock} ${units[p.unit]} disponibles`}</small></div><div className="product-action"><b>{money(p.priceCents)}<small>/{units[p.unit]}</small></b><button aria-label={`Agregar ${p.name}`} disabled={busy||!!pending||p.stock<=0} onClick={()=>add(p)}><Plus size={19}/><span>Agregar</span></button></div></div>)}{!filtered.length&&<p className="empty">No hay productos disponibles con estos filtros.</p>}</div></section><div className="desktop-cart">{cartPanel}</div></div>:page==='inventario'?<InventoryPanel products={products} onPurchase={staffRole==='admin'?()=>{setAdminStart('operations');setPage('administracion')}:undefined}/>:page==='resumen'?<><div className="stats"><div><small>Últimas ventas</small><strong>{sales.length}</strong></div><div><small>Total registrado (últimas 100)</small><strong>{money(sales.reduce((s,x)=>s+Number(x.total_cents),0))}</strong></div></div><div className="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Total</th></tr></thead><tbody>{sales.map(s=><tr key={s.id}><td>{s.id.slice(0,8)}</td><td>{new Date(s.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</td><td>{money(Number(s.total_cents))}</td></tr>)}</tbody></table>{!sales.length&&<p className="empty">No hay ventas todavía.</p>}</div></>:<div className="placeholder"><ClipboardList size={28}/><strong>Próxima fase</strong><p>Los pedidos online todavía no están habilitados.</p></div>}
+    </main></div>{page==='vender'&&(lines.length>0||pending)&&<button className="mobile-cart-trigger" onClick={()=>setCartOpen(true)}><span>{pending?'Cobro pendiente':`Venta actual · ${lines.length} productos`}</span><strong>{money(totalCents)} →</strong></button>}{cartOpen&&page==='vender'&&<div className="drawer-backdrop" onClick={()=>setCartOpen(false)}><div className="drawer" onClick={e=>e.stopPropagation()}>{cartPanel}</div></div>}<nav className="bottom-nav" aria-label="Navegación principal" style={{gridTemplateColumns:`repeat(${mobileNav.length+(moreNav.length?1:0)},minmax(0,1fr))`}}>{mobileNav.map(([id,label,icon])=><button key={id} aria-current={page===id?'page':undefined} className={page===id?'active':''} onClick={()=>{setPage(id);setCartOpen(false);setMoreOpen(false)}}>{icon}<span>{label}</span></button>)}{moreNav.length>0&&<button aria-expanded={moreOpen} aria-controls="more-navigation" className={moreNav.some(([id])=>id===page)?'active':''} onClick={()=>{setMoreOpen(v=>!v);setCartOpen(false)}}><Menu size={20}/><span>Más</span></button>}</nav>{moreOpen&&<div className="more-nav-backdrop" onClick={()=>setMoreOpen(false)}><section ref={moreMenu} className="more-navigation" id="more-navigation" role="dialog" aria-modal="true" aria-labelledby="more-nav-title" onClick={e=>e.stopPropagation()}><header><h2 id="more-nav-title">Tu operación</h2><button aria-label="Cerrar menú" onClick={()=>setMoreOpen(false)}><X size={20}/></button></header>{moreNav.map(([id,label,icon])=><button key={id} onClick={()=>{if(id==='administracion')setAdminStart('owner');setPage(id);setMoreOpen(false)}}>{icon}<span>{label}</span><span aria-hidden="true">→</span></button>)}</section></div>}{notice&&<div className="notice" role="status"><span>{notice}</span><button aria-label="Cerrar aviso" onClick={()=>setNotice('')}><X size={16}/></button></div>}</div>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthGate><App/></AuthGate></React.StrictMode>);
 // Installed PWA update check. Never reload a sale automatically.
