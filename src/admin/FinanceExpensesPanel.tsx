@@ -1,3 +1,4 @@
+import {businessDate} from '../ui/dates';
 import {useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import {saveAdminAttempt,clearAdminAttempt} from './AdminPending';
@@ -28,7 +29,7 @@ export function FinanceExpensesPanel(){
   }catch(e){const msg=e instanceof Error?e.message:'Error al registrar';setError(/load failed|failed to fetch|networkerror|fetch failed/i.test(msg)?'No pudimos confirmar el gasto. Verificá la operación pendiente antes de repetirla.':msg+' Verificá la operación pendiente antes de repetirla.');}
   finally{setBusy(false)}
  }
- return <section className="finance-panel"><div className="admin-form"><h3>Registrar gasto</h3><p className="admin-hint">No incluye compras de mercadería ni retiros personales. Las compras del negocio reportadas por repartidores se registran automáticamente al liquidar; no las ingresés de nuevo.</p>
+ return <section className="finance-panel"><details className="work-disclosure"><summary><strong>Registrar un gasto</strong><span>Nueva salida del negocio →</span></summary><div className="admin-form"><h3>Registrar gasto</h3><p className="admin-hint">No incluye compras de mercadería ni retiros personales. Las compras del negocio reportadas por repartidores se registran automáticamente al liquidar; no las ingresés de nuevo.</p>
  <label>Monto (Q)<input inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="Ej. 75.00" disabled={busy}/></label>
  <label>Categoría<select value={category} onChange={e=>setCategory(e.target.value)} disabled={busy}>{Object.entries(categories).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
  <label>Pagado con<select value={source} onChange={e=>setSource(e.target.value)} disabled={busy}>{Object.entries(sources).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
@@ -36,8 +37,8 @@ export function FinanceExpensesPanel(){
  <label>Nota (opcional)<input value={note} maxLength={250} onChange={e=>setNote(e.target.value)} placeholder="Detalle del gasto" disabled={busy}/></label>
  {error&&<p role="alert" className="admin-error">{error}</p>}{notice&&<p role="status" className="admin-ok">{notice}</p>}
  <button className="primary" onClick={()=>void submit()} disabled={busy}>{busy?'Guardando…':'Guardar gasto'}</button>
- <small>Los gastos en efectivo del negocio reducen el esperado de Caja de esa fecha. Las transferencias y el dinero personal no reducen el efectivo del cajón.</small></div>
+ <small>Los gastos en efectivo del negocio reducen el esperado de Caja de esa fecha. Las transferencias y el dinero personal no reducen el efectivo del cajón.</small></div></details>
  <div className="finance-history"><div className="finance-history-heading"><h3>Gastos recientes</h3><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
- {rows.length===0?<p className="admin-hint">Todavía no hay gastos registrados.</p>:rows.map(r=><div className="finance-entry" key={r.id}><div><strong>{categories[r.category]||r.category}</strong><small>{r.expense_date} · {sources[r.payment_source]||r.payment_source}</small>{r.note&&<small>{r.note}</small>}</div><b>{money(Number(r.amount_cents))}</b></div>)}
+ {rows.length===0?<p className="admin-hint">Todavía no hay gastos registrados.</p>:rows.map(r=><div className="finance-entry" key={r.id}><div><strong>{categories[r.category]||r.category}</strong><small>{businessDate(r.expense_date)} · {sources[r.payment_source]||r.payment_source}</small>{r.note&&<small>{r.note}</small>}</div><b>{money(Number(r.amount_cents))}</b></div>)}
  </div></section>
 }

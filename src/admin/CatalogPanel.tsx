@@ -6,6 +6,7 @@ type Family={id:string;name:string};
 type Variant={id:string;family_id:string;name:string;base_unit:string;price_cents:number;active:boolean};
 type Action='create_family'|'rename_family'|'create_variant'|'rename_variant'|'set_variant_active';
 export function CatalogPanel({onChanged}:{onChanged:()=>Promise<void>}){
+ const [catalogSearch,setCatalogSearch]=useState('');
  const [families,setFamilies]=useState<Family[]>([]),[variants,setVariants]=useState<Variant[]>([]);
  const [action,setAction]=useState<Action>('create_family'),[familyId,setFamilyId]=useState(''),[variantId,setVariantId]=useState('');
  const [name,setName]=useState(''),[unit,setUnit]=useState('lb'),[price,setPrice]=useState(''),[busy,setBusy]=useState(false);
@@ -31,7 +32,7 @@ export function CatalogPanel({onChanged}:{onChanged:()=>Promise<void>}){
  finally{setBusy(false)}
  }
  const filtered=variants.filter(v=>!familyId||v.family_id===familyId);
- return <section className="admin-panel"><div className="admin-form"><h2>Productos y presentaciones</h2>
+ return <section className="admin-panel catalog-management"><details className="work-disclosure"><summary><strong>Modificar el catálogo</strong><span>Crear, editar o desactivar →</span></summary><div className="admin-form"><h2>Productos y presentaciones</h2>
  <label>Acción<select value={action} onChange={e=>switchAction(e.target.value as Action)} disabled={busy||!!pending}><option value="create_family">Crear producto</option><option value="rename_family">Cambiar nombre de producto</option><option value="create_variant">Agregar presentación</option><option value="rename_variant">Cambiar nombre de presentación</option><option value="set_variant_active">Desactivar / reactivar presentación</option></select></label>
  {action!=='create_family'&&<label>Producto<select value={familyId} onChange={e=>{setFamilyId(e.target.value);setVariantId('')}} disabled={busy||!!pending}><option value="">Seleccionar</option>{families.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>}
  {(action==='rename_variant'||action==='set_variant_active')&&<label>Presentación<select value={variantId} onChange={e=>setVariantId(e.target.value)} disabled={busy||!!pending}><option value="">Seleccionar</option>{filtered.map(v=><option key={v.id} value={v.id}>{v.name} · {v.active?'Activa':'Inactiva'}</option>)}</select></label>}
@@ -42,5 +43,5 @@ export function CatalogPanel({onChanged}:{onChanged:()=>Promise<void>}){
  <button className="primary" onClick={()=>void submit()} disabled={busy||!!pending&&!error}>{busy?'Guardando…':action==='set_variant_active'?(selected?.active?'Desactivar':'Reactivar'):'Guardar cambio'}</button>
  {pending&&<p className="admin-hint">Si falló la conexión, no iniciés otro cambio. Revisá el historial en Supabase con el identificador de solicitud antes de repetir.</p>}
  <small>Solo Administrador. Desactivar una presentación no elimina ventas ni inventario anteriores.</small>
- </div></section>
+ </div></details><label className="module-search"><span className="sr-only">Buscar en catálogo</span><input type="search" value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)} placeholder="Buscar producto o presentación"/></label><div className="catalog-records">{variants.filter(v=>`${families.find(f=>f.id===v.family_id)?.name||''} ${v.name}`.toLowerCase().includes(catalogSearch.trim().toLowerCase())).map(v=><article className="catalog-record" key={v.id}><div><strong>{families.find(f=>f.id===v.family_id)?.name} · {v.name}</strong><small>{v.active?'Activa':'Inactiva'} · {v.base_unit}</small></div><strong>Q {(v.price_cents/100).toFixed(2)}</strong></article>)}</div>{variants.length===0&&<p className="module-caption">Todavía no hay presentaciones registradas.</p>}</section>
 }
