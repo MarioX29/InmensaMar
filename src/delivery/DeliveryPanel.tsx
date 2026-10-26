@@ -1,4 +1,5 @@
 import { DriverErrands } from './DriverErrands';
+import { DriverCashFloat } from './DriverCashFloat';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './delivery.css';
@@ -217,7 +218,8 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    {driverPending&&<p role="alert" className="delivery-warning">Operación por verificar. No iniciés otra salida. Reintentá con la misma solicitud para comprobar si ya se registró.</p>}
    <button className="delivery-primary" disabled={busy||!(driverPending?.orderIds||driverSelected).length} onClick={()=>void takeDriverOrders()}>{busy?'Procesando…':driverPending?'Verificar misma salida':'Tomar pedidos y salir'}</button>
   </section>}
-  {staffRole==='driver'&&<DriverErrands/>}
+  {staffRole==='driver'&&<DriverCashFloat/>}
+   {staffRole==='driver'&&<DriverErrands/>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>En reparto</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
   {staffRole!=='driver'&&view==='active'&&<section className="delivery-card">
    <div className="delivery-card-head"><h2>Nueva salida</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
