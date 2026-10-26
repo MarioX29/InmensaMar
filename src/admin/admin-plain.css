@@ -1,0 +1,67 @@
+/* Administration reads like a working ledger; data and tools carry the page. */
+.shell .admin-plain{gap:0;max-width:1100px}
+.shell .admin-plain .admin-primary-nav{gap:28px;margin:0;border-bottom:1px solid #bdccca}
+.shell .admin-plain .admin-primary-nav button{border-radius:0;min-height:48px;padding:9px 0;font-size:15px;color:#526773;font-weight:500}
+.shell .admin-plain .admin-primary-nav button[aria-current=page]{border-bottom-color:#142f43;color:#142f43;font-weight:650}
+.shell .admin-plain .admin-tool-nav{display:flex;flex-wrap:wrap;column-gap:25px;row-gap:0;padding:6px 0;border-bottom:1px solid #dce5e3;margin-bottom:28px}
+.shell .admin-plain .admin-tool-nav button{background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;padding:9px 0;min-height:44px;color:#526773;font-size:13px;font-weight:500}
+.shell .admin-plain .admin-tool-nav button[aria-current=page]{color:#142f43;border-bottom-color:#247b87;font-weight:650}
+.shell .admin-plain .owner-dashboard,.shell .admin-plain .finance-summary{gap:24px}
+.shell .admin-plain .owner-dashboard-header h2,.shell .admin-plain .finance-summary-head h3{font-size:23px;letter-spacing:-.4px;font-weight:600}
+.shell .admin-plain .owner-dashboard-header p,.shell .admin-plain .finance-summary-head p{font-size:14px;color:#526773}
+.shell .admin-plain .owner-dashboard-header button,.shell .admin-plain .finance-summary-head button{border:0;border-radius:0;background:transparent;padding:9px 0 9px 12px;min-height:44px;font-size:13px;color:#247b87;font-weight:500}
+.shell .admin-plain .owner-period,.shell .admin-plain .finance-period{border:0;border-bottom:1px solid #dce5e3;border-radius:0;gap:22px;justify-self:start;overflow:visible}
+.shell .admin-plain .owner-period button,.shell .admin-plain .finance-period button{border:0;border-bottom:2px solid transparent;background:transparent;color:#526773;border-radius:0;padding:7px 1px 9px;min-height:42px;font-size:14px;font-weight:400}
+.shell .admin-plain .owner-period button.selected,.shell .admin-plain .finance-period button.selected{background:transparent;color:#142f43;border-bottom-color:#247b87;font-weight:650}
+.shell .admin-plain .owner-kpis,.shell .admin-plain .finance-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:0 0 22px;border-bottom:1px solid #bdccca}
+.shell .admin-plain .owner-kpis>div,.shell .admin-plain .finance-metrics>div,.shell .admin-plain .owner-kpis>div:first-child,.shell .admin-plain .finance-metrics>div:nth-child(2){border:0;border-right:1px solid #dce5e3;border-radius:0;background:transparent;color:#142f43;box-shadow:none;padding:2px 20px;gap:8px}
+.shell .admin-plain .owner-kpis>div:first-child,.shell .admin-plain .finance-metrics>div:first-child{padding-left:0}
+.shell .admin-plain .owner-kpis>div:last-child,.shell .admin-plain .finance-metrics>div:last-child{border-right:0}
+.shell .admin-plain .owner-kpis small,.shell .admin-plain .finance-metrics small,.shell .admin-plain .owner-kpis>div:first-child small,.shell .admin-plain .finance-metrics>div:nth-child(2) small{color:#526773;font-size:13px;line-height:1.5}
+.shell .admin-plain .owner-kpis strong,.shell .admin-plain .finance-metrics strong{color:#142f43;font-size:25px;font-weight:600;letter-spacing:-.5px;line-height:1.3}
+.shell .admin-plain .owner-section{border:0;border-bottom:1px solid #dce5e3;border-radius:0;background:transparent;padding:0 0 24px;gap:14px}
+.shell .admin-plain .owner-section h3{font-size:17px;font-weight:600;letter-spacing:0}
+.shell .admin-plain .owner-item{padding:12px 0;font-size:14px}
+.shell .admin-plain .owner-item b{font-weight:600}
+.shell .admin-plain .owner-bar-track{height:6px;border-radius:0;background:#e4ebe7}
+.shell .admin-plain .owner-bar-track>div{border-radius:0;background:#247b87}
+.shell .admin-plain .owner-bar-row{min-height:28px;grid-template-columns:80px minmax(0,1fr) 115px;font-size:13px}
+.shell .admin-plain .owner-bar-row b{font-weight:500}
+.shell .admin-plain .owner-muted{line-height:1.6;font-size:13px;max-width:850px}
+.shell .admin-plain .work-disclosure{border:0;border-bottom:1px solid #dce5e3;border-radius:0;background:transparent}
+.shell .admin-plain .work-disclosure>summary{padding:12px 0;min-height:48px;gap:15px}
+.shell .admin-plain .work-disclosure>summary>strong{font-size:15px;font-weight:600}
+.shell .admin-plain .work-disclosure>summary>span{font-size:12px;font-weight:400;color:#526773}
+.shell .admin-plain .work-disclosure[open]>summary{border-bottom:0}
+.shell .admin-plain .work-disclosure>.owner-section{border-bottom:0;padding-top:10px}
+.shell .admin-plain .work-disclosure>.admin-form{padding:16px 0 22px;max-width:650px}
+.shell .admin-plain .finance-breakdown{padding:12px 0 24px;background:transparent;border:0;border-radius:0}
+.shell .admin-plain .finance-breakdown>div{border-bottom:1px solid #e4ebe7;padding:11px 0}
+.shell .admin-plain .finance-breakdown>div:last-child{border-bottom:0}
+.shell .admin-plain .finance-history{border:0;border-radius:0;background:transparent;padding:0}
+.shell .admin-plain .finance-history h3{font-size:18px;font-weight:600}
+.shell .admin-plain .catalog-records{border:0;border-radius:0;background:transparent}
+.shell .admin-plain .catalog-record{padding:15px 0}
+.shell .admin-plain .admin-form{border:0;border-radius:0;background:transparent;padding:0;max-width:650px;gap:17px}
+.shell .admin-plain .admin-switch{border-bottom:1px solid #dce5e3;gap:22px}
+.shell .admin-plain .admin-switch button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:#526773;padding:10px 0;flex:none;font-size:14px;font-weight:500}
+.shell .admin-plain .admin-switch button.selected{border-bottom-color:#247b87;background:transparent;color:#142f43;font-weight:650}
+.shell .admin-plain .admin-history-list{border:0;border-radius:0}
+.shell .admin-plain .admin-history-item{background:transparent;padding:15px 0}
+.shell .admin-plain .admin-view-error{border-left:3px solid #b85c42;padding:12px 18px;background:#fff7f3;max-width:760px}
+.shell .admin-plain .admin-view-error h2{font-size:18px;margin:0 0 8px;font-weight:600}
+.shell .admin-plain .admin-view-error p{color:#526773;font-size:14px;line-height:1.6;margin:0 0 12px}
+.shell .admin-plain .admin-view-error button{min-height:44px;background:#fff;border:1px solid #c8d4d1;padding:9px 14px;color:#142f43;font-size:14px}
+@media(max-width:740px){
+ .shell .admin-plain .admin-primary-nav{gap:24px}.shell .admin-plain .admin-primary-nav button{font-size:14px}
+ .shell .admin-plain .admin-tool-nav{column-gap:18px;margin-bottom:24px}.shell .admin-plain .admin-tool-nav button{font-size:12px}
+ .shell .admin-plain .owner-kpis,.shell .admin-plain .finance-metrics{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:22px;padding-bottom:22px}
+ .shell .admin-plain .owner-kpis>div,.shell .admin-plain .finance-metrics>div,.shell .admin-plain .owner-kpis>div:first-child,.shell .admin-plain .finance-metrics>div:nth-child(2){padding:0 14px}
+ .shell .admin-plain .owner-kpis>div:nth-child(odd),.shell .admin-plain .finance-metrics>div:nth-child(odd){padding-left:0}
+ .shell .admin-plain .owner-kpis>div:nth-child(even),.shell .admin-plain .finance-metrics>div:nth-child(even){border-right:0}
+ .shell .admin-plain .owner-kpis strong,.shell .admin-plain .finance-metrics strong{font-size:23px}
+ .shell .admin-plain .owner-kpis small,.shell .admin-plain .finance-metrics small{font-size:12px}
+ .shell .admin-plain .owner-bar-row{grid-template-columns:65px minmax(0,1fr) 86px;gap:9px;font-size:11px}
+ .shell .admin-plain .work-disclosure>summary>span{max-width:120px;text-align:right;font-size:11px}
+ .shell .admin-plain .owner-item{gap:12px;font-size:13px}.shell .admin-plain .owner-section{padding-bottom:20px}
+}
