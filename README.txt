@@ -1,3 +1,7 @@
+DOCUMENTO HISTÓRICO — Core 0.4.
+El estado y la activación actuales se describen en README.md y docs/PEDIDOS_PUBLICOS_DEVELOP.md.
+Lo que sigue documenta el piloto original, no la versión actual.
+
 Inmensa Mar - Pedidos internos de prueba (Core 0.4, fase 1)
 
 Contenido

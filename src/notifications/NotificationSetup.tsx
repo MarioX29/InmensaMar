@@ -173,10 +173,12 @@ export function NotificationSetup() {
       {status === 'install' && <p>En iPhone, abrí Inmensa Mar desde el ícono instalado en la pantalla de inicio.</p>}
       {status === 'default' && <p>Activá las notificaciones en este dispositivo.</p>}
       {status === 'denied' && <p>Notificaciones bloqueadas. Revisá los permisos del dispositivo.</p>}
-      {status === 'granted' && <p>{registered ? 'Dispositivo registrado para push.' : 'Permiso concedido. Registrá este dispositivo para push.'}</p>}
-      {(status === 'default' || status === 'granted') && <button type="button" className="notification-action" disabled={busy} onClick={() => void enable()}>{busy ? 'Registrando…' : registered ? 'Volver a registrar dispositivo' : 'Activar y registrar dispositivo'}</button>}
-      {status === 'granted' && registered && <button type="button" className="notification-action" disabled={busy} onClick={() => void remoteTest()}>Probar push remota</button>}
-      {status === 'granted' && <button type="button" className="notification-action" disabled={busy} onClick={() => void test()}>Probar aviso local</button>}
+      {status === 'granted' && <p>{registered ? 'Avisos activados en este dispositivo.' : 'Falta registrar este dispositivo para recibir avisos.'}</p>}
+      {(status === 'default' || status === 'granted') && <button type="button" className="notification-action" disabled={busy} onClick={() => void enable()}>{busy ? 'Registrando…' : registered ? 'Actualizar este dispositivo' : 'Activar notificaciones'}</button>}
+      <details className="notification-tests"><summary>Probar notificaciones</summary>
+      {status === 'granted' && registered && <button type="button" className="notification-action" disabled={busy} onClick={() => void remoteTest()}>Enviar aviso de prueba</button>}
+      {status === 'granted' && <button type="button" className="notification-action" disabled={busy} onClick={() => void test()}>Probar aviso en este equipo</button>}
+      </details>
       {role === 'admin' && <div className="notification-preferences">
         <strong>Qué avisos quiero recibir</strong>
         <label><span>Pedidos nuevos</span><input type="checkbox" checked={orderAlerts} disabled={savingPrefs} onChange={e => void savePreference('new_orders', e.target.checked)}/></label>
@@ -184,7 +186,7 @@ export function NotificationSetup() {
         <small>Estas opciones se aplican a todos tus dispositivos. No cambian tus permisos.</small>
       </div>}
       {message && <p role="status">{message}</p>}
-      <small>Prueba remota: solo a tus dispositivos. Los avisos automáticos se gestionan según tu rol y preferencias.</small>
+      <small>Las pruebas se envían solo a tus dispositivos.</small>
     </section>}
   </div>;
 }

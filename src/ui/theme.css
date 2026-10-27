@@ -1,0 +1,14 @@
+:root {
+  --im-font: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --im-ink: #142f43;
+  --im-teal: #247b87;
+  --im-sea: #85c7c1;
+  --im-paper: #ffffff;
+  --im-canvas: #f3f5f5;
+  --im-copper: #d89b62;
+  --im-line: #d7dfe1;
+  --im-muted: #52636c;
+  --im-error: #a33429;
+  --im-warning: #80571f;
+  --im-radius: 4px;
+}

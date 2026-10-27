@@ -87,7 +87,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   </section></main>;
   if (auth.status === 'loading') return <main className="auth-screen"><p>Verificando acceso…</p></main>;
   if (auth.status === 'signed_out') return <main className="auth-screen"><section className="auth-card">
-    <h1>Inmensa Mar</h1><p>Ingresá con tu cuenta de personal.</p>
+    <div className="auth-brand"><img src="/icon-192.png" alt="" width="52" height="52"/><strong>Inmensa Mar</strong></div><h1>Ingresar al negocio</h1><p>Usá tu cuenta de personal.</p>
     <form onSubmit={signIn} className="auth-form">
       <label htmlFor="login-email">Correo electrónico</label>
       <input id="login-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} />
@@ -102,5 +102,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
     {error && <p className="auth-error" role="alert">{error}</p>}
     <button className="primary" onClick={signOut}>Cerrar sesión</button>
   </section></main>;
-  return <><div className="session-strip"><span>{auth.staff?.display_name} · {auth.staff?.role}</span><button onClick={signOut}>Cerrar sesión</button></div>{isValidElement<{ staffRole?: Staff['role'];userId?:string }>(children) ? cloneElement(children, {staffRole:auth.staff?.role, userId:auth.userId, key:auth.userId}) : children}</>;
+  return <><div className="session-strip"><span>{auth.staff?.display_name} · {auth.staff?.role==='admin'?'Administración':auth.staff?.role==='driver'?'Reparto':'Mostrador'}</span><button onClick={signOut}>Cerrar sesión</button></div>{isValidElement<{ staffRole?: Staff['role'];userId?:string }>(children) ? cloneElement(children, {staffRole:auth.staff?.role, userId:auth.userId, key:auth.userId}) : children}</>;
 }

@@ -16,5 +16,6 @@ const buildVersion = (): Plugin => ({
 
 export default defineConfig({
   plugins: [react(), buildVersion()],
+  build: { rollupOptions: { input: { staff: 'index.html', orders: 'pedidos.html' } } },
   define: { __APP_BUILD_ID__: JSON.stringify(buildId) }
 });

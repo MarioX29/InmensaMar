@@ -6,3 +6,10 @@
   Cache-Control: no-cache, no-store, must-revalidate
 /version.json
   Cache-Control: no-cache, no-store, must-revalidate
+
+/pedidos
+  Cache-Control: no-cache, no-store, must-revalidate
+  Referrer-Policy: same-origin
+/pedidos.html
+  Cache-Control: no-cache, no-store, must-revalidate
+  Referrer-Policy: same-origin
