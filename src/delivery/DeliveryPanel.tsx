@@ -2,6 +2,7 @@ import { DriverCashFloat } from './DriverCashFloat';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './delivery.css';
+import {OrderDeliveryInfo,useDeliveryPreferences} from '../orders/OrderDeliveryInfo';
 import { DeliveryReturnsPanel } from './DeliveryReturnsPanel';
 type Driver={user_id:string;display_name:string};
 type Route={id:string;label:string;driver_id:string;created_at:string;dispatched_at:string|null;status:string};
@@ -23,6 +24,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [assignments,setAssignments]=useState<Assignment[]>([]);
  const [mine,setMine]=useState<DriverOrder[]>([]);
  const [readyDriver,setReadyDriver]=useState<ReadyOrder[]>([]);
+ const deliveryInfo=useDeliveryPreferences([...mine.map(o=>o.order_id),...readyDriver.map(o=>o.order_id)]);
  const [driverSelected,setDriverSelected]=useState<string[]>([]);
  const [driverPending,setDriverPending]=useState<{requestId:string;orderIds:string[]}|null>(()=>{try{return JSON.parse(localStorage.getItem('im-driver-outing-pending')||'null');}catch{return null;}});
  const [failureReason,setFailureReason]=useState('absent');
@@ -159,7 +161,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const pendingLate=orders.filter(o=>o.status==='delivered'&&!hasPayment(o.id)&&paymentEvents.some(e=>e.order_id===o.id&&e.event_kind==='pending'));
  return <section className="delivery-module">
   <details className="feature-note"><summary>Cómo registrar salidas y cobros</summary><p>Confirmar salida registra la salida física del producto. Al entregar, registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada requiere verificación.</p></details>
-  {error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
+  {deliveryInfo.failed&&<p role="alert" className="delivery-warning">No pudimos cargar ubicación y preferencias de pago. <button type="button" onClick={deliveryInfo.retry}>Reintentar datos de entrega</button></p>}{error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>Salidas en curso</button><button type="button" className={view==='returns'?'selected':''} aria-pressed={view==='returns'} onClick={()=>setView('returns')}>Devoluciones</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
   {staffRole!=='driver'&&view==='active'&&<section className="delivery-card"><h2>Salidas en curso</h2>
@@ -233,6 +235,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   </section>}
   {mine.length>0&&(staffRole==='driver'||view==='active')&&<section className="delivery-card"><h2>Mis entregas asignadas</h2>{mine.map(o=><div className="delivery-route" key={o.order_id}>
    <strong>{o.stop_order}. {o.customer_name}</strong><small>{o.route_label} · {o.delivery_address}</small><small>{o.customer_phone} · {money(o.total_cents)}</small>
+   <OrderDeliveryInfo info={deliveryInfo.rows[o.order_id]} totalCents={Number(o.total_cents)} showNotes/>
    <div className="driver-links"><a target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}>Google Maps</a><a target="_blank" rel="noopener noreferrer" href={`https://waze.com/ul?q=${encodeURIComponent(o.delivery_address)}&navigate=yes`}>Waze</a></div>
 
    {orderStates[o.order_id]==='out_for_delivery'&&<button type="button" disabled={busy||!!failurePending} onClick={()=>{setFailureReason('absent');setFailureChoice({orderId:o.order_id,action:'retry'});}}>No se pudo entregar</button>}
@@ -244,7 +247,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    <p className="delivery-subtitle">Marcá los pedidos que llevás. Si alguien más toma uno, actualizá la lista.</p>
    {readyDriver.length===0?<p>No hay pedidos disponibles.</p>:readyDriver.map(o=><label className="delivery-order" key={o.order_id}>
     <input type="checkbox" checked={driverSelected.includes(o.order_id)} disabled={busy||!!driverPending} onChange={e=>setDriverSelected(old=>e.target.checked?[...old,o.order_id]:old.filter(id=>id!==o.order_id))}/>
-    <span><strong>{o.customer_name}</strong><small>{o.delivery_address}</small></span><b>{money(o.total_cents)}</b>
+    <div className="delivery-order-info"><strong>{o.customer_name}</strong><small>{o.delivery_address}</small><OrderDeliveryInfo info={deliveryInfo.rows[o.order_id]} totalCents={Number(o.total_cents)} showNotes links={false}/></div><b>{money(o.total_cents)}</b>
    </label>)}
    <div className="delivery-summary"><span>{(driverPending?.orderIds||driverSelected).length} seleccionados</span><strong>{money(readyDriver.filter(o=>(driverPending?.orderIds||driverSelected).includes(o.order_id)).reduce((sum,o)=>sum+o.total_cents,0))}</strong></div>
    {driverPending&&<p role="alert" className="delivery-warning">Operación por verificar. No iniciés otra salida. Reintentá con la misma solicitud para comprobar si ya se registró.</p>}

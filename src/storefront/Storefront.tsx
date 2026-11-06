@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {attemptKey,receiptKey,readAttempt,readReceipt,sendAttempt,productTotal,confirmedRejections,messages,
- type CatalogProduct,type PublicAttempt,type PublicReceipt} from './orderClient';
+ type CatalogProduct,type PublicAttempt,type PublicReceipt,type DeliveryPreferences} from './orderClient';
 import '../ui/theme.css';
 import './storefront.css';
 type Line={id:string;quantity:number};
@@ -16,6 +16,14 @@ export function Storefront(){
  const [search,setSearch]=useState(''),[cartOpen,setCartOpen]=useState(false),[lines,setLines]=useState<Line[]>(()=>pending?.items.map(i=>({id:i.variant_id,quantity:i.quantity}))||[]);
  const [name,setName]=useState(pending?.customer_name||''),[phone,setPhone]=useState(pending?.customer_phone||'');
  const [address,setAddress]=useState(pending?.delivery_address||''),[notes,setNotes]=useState(pending?.notes||'');
+ const [latitude,setLatitude]=useState<number|null>(pending?.delivery_preferences?.latitude??null),[longitude,setLongitude]=useState<number|null>(pending?.delivery_preferences?.longitude??null);
+ const [mapsURL,setMapsURL]=useState(pending?.delivery_preferences?.maps_url||'');
+ const [paymentChoice,setPaymentChoice]=useState<'cash'|'transfer'>(pending?.delivery_preferences?.payment_method||'cash');
+ const [cashMode,setCashMode]=useState<'exact'|'change'>(pending?.delivery_preferences?.cash_mode||'exact');
+ const [cashTendered,setCashTendered]=useState(pending?.delivery_preferences?.cash_tendered_cents!=null?(pending.delivery_preferences.cash_tendered_cents/100).toFixed(2):'');
+ const [locating,setLocating]=useState(false),[locationMessage,setLocationMessage]=useState('');
+ const locationRequest=useRef(0);
+ useEffect(()=>()=>{locationRequest.current++},[]);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const cartPanel=useRef<HTMLElement|null>(null),cartTrigger=useRef<HTMLButtonElement|null>(null);
  async function loadCatalog(){setLoading(true);setCatalogError('');try{
@@ -36,12 +44,31 @@ export function Storefront(){
  function quantity(id:string,n:number){if(frozen)return;const p=products.find(p=>p.id===id);if(!p||!Number.isFinite(n)||n<0||n>1000||Math.round(n*10000)/10000!==n||p.unit!=='lb'&&!Number.isInteger(n)){setError('Revisá la cantidad. En unidades y paquetes usá números enteros.');return}
   setLines(old=>n===0?old.filter(l=>l.id!==id):old.some(l=>l.id===id)?old.map(l=>l.id===id?{...l,quantity:n}:l):old.length>=30?old:[...old,{id,quantity:n}]);setError('');
  }
- async function submit(e?:React.FormEvent){e?.preventDefault();if(sending.current||receipt)return;
+ function clearLocation(){locationRequest.current++;setLocating(false);setLatitude(null);setLongitude(null);setMapsURL('');setLocationMessage('');}
+ function locate(){
+  if(frozen)return;
+  if(!navigator.geolocation){setLocationMessage('Este navegador no permite compartir ubicación. Podés pegar un enlace de Maps o escribir la dirección.');return}
+  const request=++locationRequest.current;setLocating(true);setLocationMessage('Buscando tu ubicación…');
+  navigator.geolocation.getCurrentPosition(position=>{
+   if(request!==locationRequest.current||attempt.current)return;
+   const {latitude:lat,longitude:lng,accuracy}=position.coords;
+   setLocating(false);
+   if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat > 90||lng < -180||lng > 180){setLocationMessage('No pudimos obtener una ubicación válida. Pegá un enlace de Maps.');return}
+   setLatitude(Number(lat.toFixed(6)));setLongitude(Number(lng.toFixed(6)));setMapsURL('');
+   setLocationMessage(`Ubicación agregada. Revisá el punto en Maps.${accuracy>100?' La señal es aproximada; podés reemplazarla con un enlace.':''}`);
+  },failure=>{if(request!==locationRequest.current)return;setLocating(false);setLocationMessage(failure.code===1?'No compartiste tu ubicación. Podés pegar un enlace de Maps o usar la dirección escrita.':'No pudimos obtener tu ubicación. Intentá otra vez o pegá un enlace de Maps.');},{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+ }
+ async function submit(e?:React.FormEvent){e?.preventDefault();if(sending.current||receipt||locating)return;
   let value=attempt.current;
   if(!value){
    if(!lines.length||stale||loading||catalogError){setError('Revisá los productos disponibles antes de enviar.');return}
    if(name.trim().length<2||!/^\+?[0-9 ()-]{8,22}$/.test(phone.trim())||phone.replace(/[^0-9]/g,'').length<8||phone.replace(/[^0-9]/g,'').length>15||address.trim().length<5){setError('Completá nombre, teléfono y dirección.');return}
-   value={request_id:crypto.randomUUID(),customer_name:name.trim(),customer_phone:phone.trim(),delivery_address:address.trim(),notes:notes.trim(),items:lines.map(l=>({variant_id:l.id,quantity:l.quantity,expected_unit_price_cents:products.find(p=>p.id===l.id)!.price_cents}))};
+   const maps=mapsURL.trim();
+   if(maps&&!/^https:\/\/(?:maps\.app\.goo\.gl\/[A-Za-z0-9_-]+|goo\.gl\/maps\/[A-Za-z0-9_-]+|(?:www\.)?google\.com\/maps(?:[/?#][^\s]*)?|maps\.google\.com\/(?:[^\s]*))$/.test(maps)){setError('Pegá un enlace HTTPS de Google Maps, o dejá la ubicación vacía.');return}
+   const tendered=/^\d+(?:\.\d{1,2})?$/.test(cashTendered)?Math.round(Number(cashTendered)*100):NaN;
+   if(paymentChoice==='cash'&&cashMode==='change'&&(!Number.isSafeInteger(tendered)||tendered<total||tendered<=0||tendered>2147483647)){setError('Indicá con cuánto vas a pagar. Debe cubrir el total del pedido.');return}
+   const preferences:DeliveryPreferences={latitude:maps?null:latitude,longitude:maps?null:longitude,maps_url:maps,payment_method:paymentChoice,cash_mode:paymentChoice==='cash'?cashMode:null,cash_tendered_cents:paymentChoice==='cash'&&cashMode==='change'?tendered:null};
+   value={delivery_preferences:preferences,request_id:crypto.randomUUID(),customer_name:name.trim(),customer_phone:phone.trim(),delivery_address:address.trim(),notes:notes.trim(),items:lines.map(l=>({variant_id:l.id,quantity:l.quantity,expected_unit_price_cents:products.find(p=>p.id===l.id)!.price_cents}))};
    // Persist before sending. A lost response must never produce a fresh request ID.
    try{sessionStorage.setItem(attemptKey,JSON.stringify(value));sessionStorage.removeItem(receiptKey)}catch{setError('No pudimos guardar el intento en este navegador. Habilitá su almacenamiento antes de enviar.');return}
    attempt.current=value;setPending(value);
@@ -59,7 +86,7 @@ export function Storefront(){
    }
   }finally{sending.current=false;setBusy(false)}
  }
- function newOrder(){if(busy)return;try{sessionStorage.removeItem(receiptKey);sessionStorage.removeItem(attemptKey)}catch{}setReceipt(null);setLines([]);setName('');setPhone('');setAddress('');setNotes('');setError('');void loadCatalog()}
+ function newOrder(){if(busy)return;try{sessionStorage.removeItem(receiptKey);sessionStorage.removeItem(attemptKey)}catch{}setReceipt(null);setLines([]);setName('');setPhone('');setAddress('');setNotes('');clearLocation();setPaymentChoice('cash');setCashMode('exact');setCashTendered('');setError('');void loadCatalog()}
  return <div className="storefront"><header className="sf-top"><a href="/pedidos.html" className="sf-brand"><img src="/icon-192.png" alt="" width="48" height="48"/><strong>Inmensa Mar<small>Catálogo y pedidos</small></strong></a><span className="sf-local">Catálogo para entrega</span></header>
  <main>{receipt?<section className="sf-receipt" role="status"><p className="sf-receipt-status">Pedido recibido</p><h1>Gracias por tu pedido</h1><p>El negocio confirmará disponibilidad y entrega al teléfono que registraste.</p><dl><div><dt>Referencia</dt><dd>{receipt.order_id.slice(0,8).toUpperCase()}</dd></div><div><dt>Total de productos</dt><dd>{money(receipt.total_cents)}</dd></div></dl><p className="sf-help">Todavía no es un cobro ni una confirmación de entrega.</p><button onClick={newOrder}>Hacer otro pedido</button></section>:<>
  <div className="sf-heading"><div><h1>Hacé tu pedido de mariscos.</h1><p>Lo recibimos y confirmamos antes de prepararlo.</p></div><button className="sf-link" disabled={busy||loading} onClick={()=>void loadCatalog()}>Actualizar catálogo</button></div>
@@ -71,10 +98,12 @@ export function Storefront(){
  <div className={'sf-cart-wrap'+(cartOpen?' is-open':'')}><aside ref={cartPanel} className="sf-cart" aria-label="Tu pedido" role={cartOpen?'dialog':undefined} aria-modal={cartOpen?true:undefined}><div className="sf-cart-head"><h2>Tu pedido</h2><button className="sf-mobile-close sf-link" onClick={()=>setCartOpen(false)}>Volver</button></div>
  <form onSubmit={e=>void submit(e)}><div>{!lines.length?<p className="sf-help">Agregá productos del catálogo.</p>:lines.map(l=>{const p=products.find(x=>x.id===l.id);return <div className="sf-cart-line" key={l.id}><strong>{p?p.family+' · '+p.name:'Producto por actualizar'}</strong><div><label>Cantidad ({p?unit[p.unit]:''})<input key={l.id+'-'+l.quantity} type="number" inputMode="decimal" min="0.0001" max="1000" step={p?.unit==='lb'?'0.0001':'1'} defaultValue={l.quantity} disabled={frozen} onBlur={e=>{const n=Number(e.target.value);if(!e.target.value.trim()||!Number.isFinite(n)||n<=0||n>1000||Math.round(n*10000)/10000!==n||p?.unit!=='lb'&&!Number.isInteger(n)){e.target.value=String(l.quantity);setError('Revisá la cantidad del producto.');return}quantity(l.id,n)}}/></label><span>{p?money(productTotal(l.quantity,p.price_cents)):'—'}</span><button type="button" className="sf-link" disabled={frozen} onClick={()=>quantity(l.id,0)}>Quitar</button></div>{p&&!p.available&&<small className="sf-error">Este producto ya no está disponible.</small>}</div>})}</div>
  <div className="sf-total"><span>Total de productos</span><strong>{products.length?money(total):'—'}</strong></div><p className="sf-help">El negocio confirmará disponibilidad y condiciones de entrega. El envío de este pedido no realiza ningún pago.</p>
- <fieldset disabled={frozen}><legend>Tus datos para la entrega</legend><label>Nombre<input value={name} onChange={e=>setName(e.target.value)} required minLength={2} maxLength={120} autoComplete="name"/></label><label>Teléfono<input type="tel" inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} required minLength={8} maxLength={22} autoComplete="tel"/></label><label>Dirección de entrega<textarea value={address} onChange={e=>setAddress(e.target.value)} required minLength={5} maxLength={300} autoComplete="street-address" rows={2}/></label><details><summary>Agregar indicaciones (opcional)</summary><label>Indicaciones<textarea value={notes} onChange={e=>setNotes(e.target.value)} maxLength={500} rows={2}/></label></details></fieldset>
- <button className="sf-primary" type="submit" disabled={busy||!pending&&(!lines.length||loading||!!catalogError||stale)}>{busy?'Enviando…':pending?'Verificar mi envío':'Enviar pedido'}</button>
+ <fieldset disabled={frozen}><legend>Tus datos para la entrega</legend><label>Nombre<input value={name} onChange={e=>setName(e.target.value)} required minLength={2} maxLength={120} autoComplete="name"/></label><label>Teléfono<input type="tel" inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} required minLength={8} maxLength={22} autoComplete="tel"/></label><label>Dirección de entrega<textarea value={address} onChange={e=>setAddress(e.target.value)} required minLength={5} maxLength={300} autoComplete="street-address" rows={2}/></label><div className="sf-location"><strong>Ubicación de entrega (opcional)</strong><p className="sf-help">Usá tu ubicación solo si estás donde querés recibir el pedido.</p><button type="button" disabled={locating} onClick={locate}>{locating?'Buscando ubicación…':'Usar mi ubicación'}</button><label>O pegá un enlace de Google Maps<input type="url" value={mapsURL} maxLength={500} placeholder="https://maps.app.goo.gl/…" onChange={e=>{locationRequest.current++;setLocating(false);setMapsURL(e.target.value);setLatitude(null);setLongitude(null);setLocationMessage('')}}/></label>{latitude!==null&&longitude!==null&&<a href={`https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`} target="_blank" rel="noopener noreferrer">Revisar ubicación en Maps</a>}{(latitude!==null||mapsURL||locating)&&<button className="sf-link" type="button" onClick={clearLocation}>Quitar ubicación</button>}{locationMessage&&<p className="sf-help" role="status">{locationMessage}</p>}</div><details><summary>Agregar indicaciones (opcional)</summary><label>Indicaciones<textarea value={notes} onChange={e=>setNotes(e.target.value)} maxLength={500} rows={2}/></label></details></fieldset>
+ <fieldset disabled={frozen}><legend>¿Cómo vas a pagar?</legend><div className="sf-payment-options"><label><input type="radio" name="sf-payment" checked={paymentChoice==='cash'} onChange={()=>setPaymentChoice('cash')}/> Efectivo</label><label><input type="radio" name="sf-payment" checked={paymentChoice==='transfer'} onChange={()=>setPaymentChoice('transfer')}/> Transferencia</label></div>{paymentChoice==='cash'?<><div className="sf-payment-options"><label><input type="radio" name="sf-cash" checked={cashMode==='exact'} onChange={()=>setCashMode('exact')}/> Pago exacto</label><label><input type="radio" name="sf-cash" checked={cashMode==='change'} onChange={()=>setCashMode('change')}/> Necesito vuelto</label></div>{cashMode==='change'&&<><label>¿Con cuánto vas a pagar? (Q)<input type="number" inputMode="decimal" step="0.01" min={(total/100).toFixed(2)} value={cashTendered} required onChange={e=>setCashTendered(e.target.value)} placeholder="Ej. 200.00"/></label><p className="sf-help">Vuelto estimado: <strong>{/^\d+(?:\.\d{1,2})?$/.test(cashTendered)&&Math.round(Number(cashTendered)*100)>=total?money(Math.round(Number(cashTendered)*100)-total):'—'}</strong>. El negocio confirmará el total final.</p></>}</>:<p className="sf-help">El negocio te confirmará los datos para transferir. El pago queda pendiente hasta que lo verifiquen; elegir esta opción no registra un pago.</p>}</fieldset>
+ <p className="sf-help">Tus datos se usan para atender este pedido. <a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Cómo usamos tus datos</a></p>
+ <button className="sf-primary" type="submit" disabled={busy||locating||!pending&&(!lines.length||loading||!!catalogError||stale)}>{busy?'Enviando…':pending?'Verificar mi envío':'Enviar pedido'}</button>
  </form></aside></div></div>
  <button ref={cartTrigger} className="sf-mobile-cart" onClick={()=>setCartOpen(true)}>Ver mi pedido · {lines.length} productos <strong>{products.length?money(total):'—'}</strong></button>
- </>}</main><footer>Inmensa Mar · Tus datos se usan para atender este pedido.</footer></div>
+ </>}</main><footer>Inmensa Mar · Tus datos se usan para atender este pedido. <a href="/privacidad.html" target="_blank" rel="noopener noreferrer">Privacidad</a></footer></div>
 }
 createRoot(document.getElementById('root')!).render(<Storefront/>);

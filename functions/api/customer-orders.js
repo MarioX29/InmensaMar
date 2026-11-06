@@ -17,10 +17,11 @@ export async function onRequest({request,env}) {
   catch (e) { return json({code:e.message === 'TOO_LARGE'?'TOO_LARGE':'INVALID_REQUEST'}, e.message === 'TOO_LARGE'?413:400); }
   if (!validOrder(body)) return json({code:'INVALID_REQUEST'},400);
   try {
-    const result = await rpc(env,'submit_storefront_order',{
+    const result = await rpc(env,body.delivery_preferences === undefined ? 'submit_storefront_order' : 'submit_storefront_order_v2',{
       p_request_id: body.request_id, p_customer_name: body.customer_name,
       p_customer_phone: body.customer_phone, p_delivery_address: body.delivery_address,
       p_notes: body.notes, p_items: body.items,
+      ...(body.delivery_preferences === undefined ? {} : {p_delivery_preferences:body.delivery_preferences}),
       p_client_hash: await clientHash(ip,env.SUPABASE_SERVICE_ROLE_KEY)
     });
     if (!result.ok) {

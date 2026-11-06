@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './orders.css';
+import {OrderDeliveryInfo,useDeliveryPreferences} from './OrderDeliveryInfo';
 
 type Product = { id:string; name:string; unit:'lb'|'unit'|'package'; price_cents:number; stock:number };
 type Order = {id:string;created_at:string;customer_name:string;customer_phone:string;delivery_address:string;notes:string;status:string;total_cents:number};
@@ -24,6 +25,7 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
   const [view,setView]=useState<'customer'|'counter'>('counter');
   const [products,setProducts]=useState<Product[]>([]);
   const [orders,setOrders]=useState<Order[]>([]);
+  const deliveryInfo=useDeliveryPreferences(orders.map(o=>o.id));
   const [orderLines,setOrderLines]=useState<OrderLine[]>([]);
   const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
   const [transferIssues,setTransferIssues]=useState<TransferIssueEvent[]>([]);
@@ -196,7 +198,7 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
     <div className="op-main"><div className="op-head"><div><h1>Pedidos</h1><p>Recibí, prepará y dejá listo para el repartidor.</p></div><button className="op-outline" onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
       <div className="op-tabs" aria-label="Vistas de pedidos">{([['local','En tienda'],['delivery','En reparto']] as const).map(([id,label])=><button key={id} className={view==='counter'&&orderFilter==='active'&&stage===id?'on':''} onClick={()=>{setView('counter');setOrderFilter('active');setStage(id)}}>{label} ({activeOrders.filter(o=>stageMatches(o,id)).length})</button>)}<button className={view==='counter'&&orderFilter==='history'?'on':''} onClick={()=>{setView('counter');setOrderFilter('history')}}>Historial</button><button className={view==='customer'?'on':''} onClick={()=>setView('customer')}>Nuevo pedido</button></div>
 
-      {error&&<div className="op-error" role="alert">{error}<button onClick={()=>setError('')}>Cerrar</button></div>}
+      {deliveryInfo.failed&&<p role="alert" className="op-payment-warning">No pudimos cargar ubicación y preferencias de pago. <button type="button" onClick={deliveryInfo.retry}>Reintentar datos de entrega</button></p>}{error&&<div className="op-error" role="alert">{error}<button onClick={()=>setError('')}>Cerrar</button></div>}
       {notice&&<div className="op-success" role="status">{notice}<button onClick={()=>setNotice('')}>Cerrar</button></div>}
       {view==='customer'?<div className="op-columns"><section><h2>Productos</h2><div className="op-products">{products.map(p=>{
         const qty=items.find(x=>x.variant_id===p.id)?.quantity||0;const increment=p.unit==='lb'?0.5:1;
@@ -215,6 +217,7 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
                 </div>;
               })}
         </div></details>
+        <OrderDeliveryInfo info={deliveryInfo.rows[o.id]} totalCents={Number(o.total_cents)}/>
         {o.notes&&<p className="op-notes"><strong>Indicaciones:</strong> {o.notes}</p>}<div className="op-orderfoot"><strong>{cash(Number(o.total_cents))}</strong><small>{new Date(o.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></div><div className="op-actions">
         {o.status==='received'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'accept')}>Aceptar pedido</button>}
         {o.status==='accepted'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'prepare')}>Continuar preparación</button>}

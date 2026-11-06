@@ -1,6 +1,7 @@
 export type CatalogProduct={id:string;family:string;name:string;unit:'lb'|'unit'|'package';price_cents:number;available:boolean};
 export type PublicItem={variant_id:string;quantity:number;expected_unit_price_cents:number};
-export type PublicAttempt={request_id:string;customer_name:string;customer_phone:string;delivery_address:string;notes:string;items:PublicItem[]};
+export type DeliveryPreferences={latitude:number|null;longitude:number|null;maps_url:string;payment_method:'cash'|'transfer';cash_mode:'exact'|'change'|null;cash_tendered_cents:number|null};
+export type PublicAttempt={request_id:string;customer_name:string;customer_phone:string;delivery_address:string;notes:string;delivery_preferences?:DeliveryPreferences;items:PublicItem[]};
 export type PublicReceipt={order_id:string;total_cents:number};
 export const attemptKey='im-storefront-attempt-v1';
 export const receiptKey='im-storefront-receipt-v1';

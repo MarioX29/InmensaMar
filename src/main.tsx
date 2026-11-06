@@ -301,12 +301,12 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
         <div className="cart-bottom">
           <div className="quantity-control">
             <div className="stepper">
-              <button type="button" disabled={busy||!!pending} aria-label={`Restar ${product.name}`} onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,-step(product));}}><Minus size={15}/></button>
+              <button type="button" disabled={busy||!!pending} aria-label={`Restar ${product.name}`} onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,-(selectedUnit==='oz'?1/16:step(product)));}}><Minus size={15}/></button>
               <input aria-label={`Cantidad de ${product.name}`} type="text" inputMode="decimal" value={displayValue} disabled={busy||!!pending}
                 onChange={e=>setQuantityDrafts(old=>({...old,[product.id]:e.target.value}))}
                 onBlur={()=>{if(quantityDrafts[product.id]!==undefined)commitQuantity(product,quantityDrafts[product.id],selectedUnit);}}
                 onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} />
-              <button type="button" disabled={busy||!!pending} aria-label={`Sumar ${product.name}`} onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,step(product));}}><Plus size={15}/></button>
+              <button type="button" disabled={busy||!!pending} aria-label={`Sumar ${product.name}`} onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,selectedUnit==='oz'?1/16:step(product));}}><Plus size={15}/></button>
             </div>
             {product.unit==='lb'?<select aria-label={`Unidad de ${product.name}`} value={selectedUnit} disabled={busy||!!pending}
               onChange={e=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});setQuantityUnits(old=>({...old,[product.id]:e.target.value as 'lb'|'oz'}));}}>

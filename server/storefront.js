@@ -2,7 +2,7 @@
 export function json(body, status = 200) {
   return new Response(JSON.stringify(body), {status, headers: {
     'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin'
+    'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin', 'x-frame-options':'DENY'
   }});
 }
 export function configured(env) {
@@ -54,6 +54,7 @@ export function validOrder(x) {
       x.customer_phone.replace(/[^0-9]/g,'').length < 8 || x.customer_phone.replace(/[^0-9]/g,'').length > 15 ||
       typeof x.delivery_address !== 'string' || x.delivery_address.trim().length < 5 || x.delivery_address.trim().length > 300 ||
       typeof x.notes !== 'string' || x.notes.length > 500) return false;
+  if (x.delivery_preferences !== undefined && !validDeliveryPreferences(x.delivery_preferences)) return false;
   if (!Array.isArray(x.items) || x.items.length < 1 || x.items.length > 30) return false;
   const ids = new Set();
   for (const item of x.items) {
@@ -65,4 +66,22 @@ export function validOrder(x) {
     ids.add(item.variant_id.toLowerCase());
   }
   return true;
+}
+
+export function validDeliveryPreferences(p) {
+ if (!p || typeof p !== 'object' || Array.isArray(p)) return false;
+ if (Object.keys(p).sort().join(',') !== 'cash_mode,cash_tendered_cents,latitude,longitude,maps_url,payment_method') return false;
+ const coords = p.latitude !== null || p.longitude !== null;
+ if (coords && (typeof p.latitude !== 'number' || !Number.isFinite(p.latitude) || p.latitude < -90 || p.latitude > 90 || typeof p.longitude !== 'number' || !Number.isFinite(p.longitude) || p.longitude < -180 || p.longitude > 180)) return false;
+ if (typeof p.maps_url !== 'string' || p.maps_url.length > 500 || !validMapsURL(p.maps_url)) return false;
+ if (coords && p.maps_url) return false;
+ if (p.payment_method === 'transfer') return p.cash_mode === null && p.cash_tendered_cents === null;
+ if (p.payment_method !== 'cash') return false;
+ if (p.cash_mode === 'exact') return p.cash_tendered_cents === null;
+ return p.cash_mode === 'change' && Number.isSafeInteger(p.cash_tendered_cents) && p.cash_tendered_cents > 0 && p.cash_tendered_cents <= 2147483647;
+}
+function validMapsURL(value) {
+ if (value === '') return true;
+ // Only map links, never arbitrary navigation or redirects through our server.
+ return /^https:\/\/(?:maps\.app\.goo\.gl\/[A-Za-z0-9_-]+|goo\.gl\/maps\/[A-Za-z0-9_-]+|(?:www\.)?google\.com\/maps(?:[/?#][^\s]*)?|maps\.google\.com\/(?:[^\s]*))$/.test(value);
 }

@@ -57,3 +57,7 @@ Se descartó convertir toda la interfaz en una landing con titulares gigantes, f
 ## Límites de esta entrega
 
 Rediseño visual y textos de presentación. Conservar RPC, argumentos, reservas, cobros, idempotencia, permisos y confirmaciones. SQL y API de pedidos públicos permanecen iguales al paquete pendiente. Un cambio de apariencia no equivale a QA de Supabase ni a validación visual en un dispositivo real.
+
+## Ajuste de entrega noviembre
+
+Se conserva el sistema visual existente. En el catálogo móvil, títulos de 30 px y texto de campos de 16 px; se mantienen controles de al menos 48 px. La lectura de privacidad usa el mismo azul marino #142F43, turquesa #247B87 y fondo blanco. No se agregan animaciones ni fotos. El mostrador conserva texto legible; la unidad seleccionada determina si los botones cambian media libra o una onza.

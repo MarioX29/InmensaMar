@@ -1,20 +1,18 @@
 # Inmensa Mar
 
-Sistema interno de ventas, inventario y pedidos.
+Sistema de ventas, inventario, pedidos, reparto y Caja para el negocio Inmensa Mar. Rama de trabajo: **develop**. Esta versión integra los cambios pendientes y requiere validación publicada antes de promoverse a producción.
 
-## Desarrollo
+La guía actual es [docs/ENTREGA_INTEGRADA.md](docs/ENTREGA_INTEGRADA.md): incluye SQL, permisos, variables, pruebas realizadas y pendientes. No aplicar los ZIP anteriores sobre esta entrega.
 
-```bash
-npm install
-npm run dev
+```sh
+npm ci
+npm run build
 ```
 
-Configurar `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` para la compilación.
+Variables de cliente: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`. Solo el servidor utiliza `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` (Secret). Para pedidos públicos se requiere `PUBLIC_ORDERING_ENABLED=true` en Preview. Nunca poner claves privadas en variables `VITE_` ni en el repositorio.
 
-## Pedidos de clientes en develop
+Contacto público de privacidad: `PUBLIC_CONTACT_WHATSAPP` o `PUBLIC_CONTACT_EMAIL` en Cloudflare. No son credenciales y se mostrarán a los clientes.
 
-`pedidos.html` es la entrada pública del catálogo y envío de pedidos, sin cuenta de personal. Usa las Pages Functions de `functions/api/customer-*.js`; las claves de servidor se usan exclusivamente en `server/storefront.js`.
+`pedidos.html` carga el catálogo y permite enviar pedidos sin cuenta de personal. `privacidad.html` informa sobre el uso de datos. La selección de transferencia es una preferencia; el cobro y la verificación se registran por personal autorizado.
 
-La activación requiere la nueva migración, el QA de Supabase y `PUBLIC_ORDERING_ENABLED=true` en Preview. Sin esa configuración el API no acepta pedidos. La guía completa está en [docs/PEDIDOS_PUBLICOS_DEVELOP.md](docs/PEDIDOS_PUBLICOS_DEVELOP.md).
-
-La bandeja del personal mantiene el ingreso manual y las operaciones existentes. El inventario se reserva al aceptar; enviar un pedido público no lo reserva ni cobra. Las etiquetas de entorno de prueba se conservan porque esta entrega sigue en develop. No se ha promovido main a producción.
+El esquema de referencia previo es solo documentación; no es una migración para ejecutar sobre una base existente. La recuperación de datos se describe en docs/RECUPERACION_Y_RESPALDOS.md y todavía requiere una prueba aislada.
