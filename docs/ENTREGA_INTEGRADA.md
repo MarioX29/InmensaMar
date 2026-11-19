@@ -1,3 +1,6 @@
+> **DOCUMENTO HISTÓRICO — NO USAR PARA DESPLEGAR LA VERSIÓN ACTUAL.**
+> Estas instrucciones corresponden a la entrega anterior basada en Develop 53 y al esquema exportado el 5 de noviembre de 2026. Fueron sustituidas por la consolidación del 18 de noviembre. Para el orden vigente de migraciones, QA y advertencias de compatibilidad, consultar [RELEASE_CANDIDATE_57.md](RELEASE_CANDIDATE_57.md). No ejecutar la migración externa mencionada abajo sobre la base actual.
+
 # Entrega integrada para develop — candidata a validación
 
 Base: InmensaMar-develop (53).zip y supabase-schema.sql exportado el 5 de noviembre de 2026. El ZIP de actualización contiene todos los cambios de esta entrega sobre esa base, incluidas copias del SQL para mantener el repositorio completo. Ejecutar únicamente el archivo de migración separado una vez, no ambas copias. No hay que aplicar el ZIP anterior de Ubicación y Pago ni combinar paquetes.

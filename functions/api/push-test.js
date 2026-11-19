@@ -320,6 +320,39 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'Invalid session' }, 401);
   }
 
+  // A valid Supabase account is not sufficient: push testing is restricted
+  // to active Inmensa Mar staff. Use the server key only for this lookup.
+  const staffQuery = new URL(`${base}/rest/v1/staff_profiles`);
+  staffQuery.searchParams.set('select', 'user_id,role,active');
+  staffQuery.searchParams.set('user_id', `eq.${user.id}`);
+  staffQuery.searchParams.set('active', 'eq.true');
+  staffQuery.searchParams.set('limit', '1');
+
+  const staffResponse = await fetch(staffQuery, {
+    headers: adminHeaders
+  });
+
+  if (!staffResponse.ok) {
+    console.error('Push staff eligibility query failed', {
+      status: staffResponse.status,
+      statusText: staffResponse.statusText
+    });
+
+    return json({ error: 'Unable to verify staff access' }, 503);
+  }
+
+  const staff = await staffResponse.json();
+  const profile = Array.isArray(staff) ? staff[0] : null;
+
+  if (
+    !profile ||
+    profile.user_id !== user.id ||
+    profile.active !== true ||
+    !['admin', 'counter', 'driver'].includes(profile.role)
+  ) {
+    return json({ error: 'Active staff access required' }, 403);
+  }
+
   const query = new URL(`${base}/rest/v1/push_subscriptions`);
 
   query.searchParams.set(
