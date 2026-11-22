@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import './admin.css';
 import {saveAdminAttempt,clearAdminAttempt} from './AdminPending';
-import {inventoryUnits,unitLabels} from '../lib/units';
+import {inventoryUnits,isInventoryUnit,unitLabels} from '../lib/units';
 import type {InventoryUnit} from '../lib/units';
 type Family={id:string;name:string};
 type Variant={id:string;family_id:string;name:string;base_unit:string;price_cents:number;active:boolean};
@@ -39,7 +39,7 @@ export function CatalogPanel({onChanged}:{onChanged:()=>Promise<void>}){
  {action!=='create_family'&&<label>Producto<select value={familyId} onChange={e=>{setFamilyId(e.target.value);setVariantId('')}} disabled={busy||!!pending}><option value="">Seleccionar</option>{families.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>}
  {(action==='rename_variant'||action==='set_variant_active')&&<label>Presentación<select value={variantId} onChange={e=>setVariantId(e.target.value)} disabled={busy||!!pending}><option value="">Seleccionar</option>{filtered.map(v=><option key={v.id} value={v.id}>{v.name} · {v.active?'Activa':'Inactiva'}</option>)}</select></label>}
  {action!=='set_variant_active'&&<label>{action==='create_variant'||action==='rename_variant'?'Nombre de presentación':'Nombre de la familia'}<input value={name} onChange={e=>setName(e.target.value)} disabled={busy||!!pending} placeholder="Ej. Camarón grande"/></label>}
- {action==='create_variant'&&<><label>Unidad de inventario<select value={unit} onChange={e=>setUnit(e.target.value)} disabled={busy||!!pending}>{inventoryUnits.map(code=><option key={code} value={code}>{unitLabels[code][0].toUpperCase()+unitLabels[code].slice(1)}{code==='lb'?' (lb)':''}</option>)}</select></label><label>Precio por unidad (Q)<input inputMode="decimal" value={price} onChange={e=>setPrice(e.target.value)} disabled={busy||!!pending}/></label></>}
+ {action==='create_variant'&&<><label>Unidad de inventario<select value={unit} onChange={e=>{const value=e.currentTarget.value;if(isInventoryUnit(value))setUnit(value)}} disabled={busy||!!pending}>{inventoryUnits.map(code=><option key={code} value={code}>{unitLabels[code][0].toUpperCase()+unitLabels[code].slice(1)}{code==='lb'?' (lb)':''}</option>)}</select></label><label>Precio por unidad (Q)<input inputMode="decimal" value={price} onChange={e=>setPrice(e.target.value)} disabled={busy||!!pending}/></label></>}
  {action==='set_variant_active'&&selected&&<p className="admin-hint">Estado actual: {selected.active?'Activa':'Inactiva'}. Los registros anteriores se conservan.</p>}
  {error&&<p role="alert" className="admin-error">{error}</p>}{notice&&<p role="status" className="admin-ok">{notice}</p>}
  <button className="primary" onClick={()=>void submit()} disabled={busy||!!pending&&!error}>{busy?'Guardando…':action==='set_variant_active'?(selected?.active?'Desactivar':'Reactivar'):'Guardar cambio'}</button>
