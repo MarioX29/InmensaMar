@@ -2,18 +2,21 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import './orders.css';
 import {OrderDeliveryInfo,useDeliveryPreferences} from './OrderDeliveryInfo';
+import {unitLabels,quantityStep} from '../lib/units';
+import type {InventoryUnit} from '../lib/units';
+import { QuantityInput } from '../components/QuantityInput';
 
-type Product = { id:string; name:string; unit:'lb'|'unit'|'package'; price_cents:number; stock:number };
+type Product = { id:string; name:string; unit:InventoryUnit; price_cents:number; stock:number };
 type Order = {id:string;created_at:string;customer_name:string;customer_phone:string;delivery_address:string;notes:string;status:string;total_cents:number};
 type Item = {variant_id:string;quantity:number};
-type OrderLine = {order_id:string;variant_id:string;quantity:number;unit_price_cents:number;line_total_cents:number};
+type OrderLine = {id:string;order_id:string;variant_id:string;quantity:number;unit_price_cents:number;line_total_cents:number};
 type VariantLabel = {id:string;name:string;base_unit:string};
 type PaymentEvent = {order_id:string;event_kind:'pending'|'payment';method:string;amount_cents:number;verified_at:string|null};
 type PaymentMethod = 'cash'|'transfer_reported';
 type TransferIssueEvent = {order_id:string;action:'reported'|'resolved';reason:string;created_at:string;event_seq:number};
 const activeStatuses = ['received','accepted','preparing','ready','out_for_delivery','return_pending'];
 const cash=(n:number)=>`Q ${(n/100).toFixed(2)}`;
-const units:Record<Product['unit'],string>={lb:'lb',unit:'unidad',package:'paquete'};
+const units=unitLabels;
 const message=(error:unknown)=>{
   if (error && typeof error==='object' && 'message' in error) return String(error.message);
   return 'No se pudo completar la operación.';
@@ -30,6 +33,9 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
   const [paymentEvents,setPaymentEvents]=useState<PaymentEvent[]>([]);
   const [transferIssues,setTransferIssues]=useState<TransferIssueEvent[]>([]);
   const [issueOrderId,setIssueOrderId]=useState<string|null>(null);
+  const [priceEditor,setPriceEditor]=useState<{order:Order;line:OrderLine}|null>(null);
+  const [priceDraft,setPriceDraft]=useState('');
+  const [priceReason,setPriceReason]=useState('');
   const [issueAction,setIssueAction]=useState<'reported'|'resolved'>('reported');
   const [issueReason,setIssueReason]=useState('');
   const [payOrderId,setPayOrderId]=useState<string|null>(null);
@@ -66,7 +72,7 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
     const fetchedOrders=[...new Map([...(historyResult.data||[]),...(orderResult.data||[])].map(o=>[o.id,o])).values()] as Order[];
     if(fetchedOrders.length){
       const lineResult=await supabase.from('customer_order_lines')
-        .select('order_id,variant_id,quantity,unit_price_cents,line_total_cents')
+        .select('id,order_id,variant_id,quantity,unit_price_cents,line_total_cents')
         .in('order_id',fetchedOrders.map(o=>o.id));
       if(lineResult.error){setError('No se pudo cargar el detalle de los pedidos: '+message(lineResult.error));return;}
       const lines=(lineResult.data||[]) as OrderLine[];
@@ -110,6 +116,12 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
       return next<=0?old.filter(x=>x.variant_id!==p.id):old.some(x=>x.variant_id===p.id)?old.map(x=>x.variant_id===p.id?{...x,quantity:next}:x):[...old,{variant_id:p.id,quantity:next}];
     });
   }
+  function setOrderItemQuantity(p:Product,quantity:number){
+    const next=Math.round(quantity*10000)/10000;
+    if(!Number.isFinite(next)||next<=0||next>p.stock||(p.unit!=='lb'&&!Number.isInteger(next))){setError('La cantidad debe ser válida y no superar el inventario disponible.');return;}
+    setItems(old=>old.some(item=>item.variant_id===p.id)?old.map(item=>item.variant_id===p.id?{...item,quantity:next}:item):[...old,{variant_id:p.id,quantity:next}]);
+    setError('');
+  }
   async function submit(e:React.FormEvent){
     e.preventDefault();if(!supabase||busy||!items.length)return;
     setBusy(true);setError('');setNotice('');
@@ -140,6 +152,33 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
   const issueFor=(id:string)=>transferIssues.find(e=>e.order_id===id);
   function openIssue(id:string,action:'reported'|'resolved'){
     setIssueOrderId(id);setIssueAction(action);setIssueReason('');setError('');
+  }
+  function openPriceEditor(order:Order,line:OrderLine){
+    setPriceEditor({order,line});
+    setPriceDraft((Number(line.unit_price_cents)/100).toFixed(2));
+    setPriceReason('');
+    setError('');
+  }
+  async function saveOrderLinePrice(){
+    if(!supabase||busy||staffRole!=='admin'||!priceEditor)return;
+    const amount=Number(priceDraft);
+    const cents=Math.round(amount*100);
+    if(!Number.isFinite(amount)||!Number.isSafeInteger(cents)||cents<0||cents>100000000){setError('Ingresá un precio válido.');return;}
+    if(priceReason.trim().length<3){setError('Indicá el acuerdo o motivo del cambio.');return;}
+    setBusy(true);setError('');setNotice('');
+    const {error:failure}=await supabase.rpc('admin_adjust_order_line_price',{
+      p_request_id:crypto.randomUUID(),
+      p_order_line_id:priceEditor.line.id,
+      p_new_unit_price_cents:cents,
+      p_reason:priceReason.trim()
+    });
+    if(failure){setError(message(failure));}
+    else{
+      setNotice('Precio actualizado para este pedido. El catálogo no fue modificado.');
+      setPriceEditor(null);setPriceDraft('');setPriceReason('');
+      await load();
+    }
+    setBusy(false);
   }
   async function saveIssue(){
     if(!supabase||busy||!issueOrderId||issueReason.trim().length<3)return;
@@ -201,19 +240,20 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
       {deliveryInfo.failed&&<p role="alert" className="op-payment-warning">No pudimos cargar ubicación y preferencias de pago. <button type="button" onClick={deliveryInfo.retry}>Reintentar datos de entrega</button></p>}{error&&<div className="op-error" role="alert">{error}<button onClick={()=>setError('')}>Cerrar</button></div>}
       {notice&&<div className="op-success" role="status">{notice}<button onClick={()=>setNotice('')}>Cerrar</button></div>}
       {view==='customer'?<div className="op-columns"><section><h2>Productos</h2><div className="op-products">{products.map(p=>{
-        const qty=items.find(x=>x.variant_id===p.id)?.quantity||0;const increment=p.unit==='lb'?0.5:1;
+        const qty=items.find(x=>x.variant_id===p.id)?.quantity||0;const increment=quantityStep(p.unit);
         return <div className="op-product" key={p.id}><div><strong>{p.name}</strong><small>{cash(p.price_cents)} / {units[p.unit]} · {p.stock} disponibles</small></div><div className="op-qty"><button aria-label={'Quitar '+p.name} onClick={()=>adjust(p,-increment)} disabled={busy||qty===0}>−</button><span>{qty}</span><button aria-label={'Agregar '+p.name} onClick={()=>adjust(p,increment)} disabled={busy||qty+increment>p.stock}>+</button></div></div>;
-      })}</div></section><form className="op-form" onSubmit={e=>void submit(e)}><h2>Datos del pedido</h2><label>Nombre<input value={name} onChange={e=>setName(e.target.value)} minLength={2} maxLength={120} required/></label><label>Teléfono<input value={phone} onChange={e=>setPhone(e.target.value)} minLength={8} maxLength={22} required/></label><label>Dirección de entrega<textarea value={address} onChange={e=>setAddress(e.target.value)} minLength={5} maxLength={300} required rows={2}/></label><label>Indicaciones (opcional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} maxLength={500} rows={2}/></label><div className="op-total"><span>Total estimado</span><strong>{cash(total)}</strong></div><button className="op-primary" disabled={busy||items.length===0}>{busy?'Enviando…':'Crear pedido'}</button><small>El inventario se reserva únicamente cuando mostrador acepta el pedido.</small></form></div>
+      })}</div></section><form className="op-form" onSubmit={e=>void submit(e)}><h2>Datos del pedido</h2><label>Nombre<input value={name} onChange={e=>setName(e.target.value)} minLength={2} maxLength={120} required/></label><label>Teléfono<input value={phone} onChange={e=>setPhone(e.target.value)} minLength={8} maxLength={22} required/></label><label>Dirección de entrega<textarea value={address} onChange={e=>setAddress(e.target.value)} minLength={5} maxLength={300} required rows={2}/></label><label>Indicaciones (opcional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} maxLength={500} rows={2}/></label>{selected.length>0&&<div className="op-selected-quantities"><h3>Cantidades del pedido</h3>{selected.map(({i,p})=><div className="op-selected-quantity" key={p.id}><strong>{p.name}</strong><QuantityInput unit={p.unit} value={i.quantity} disabled={busy} label="Cantidad" onCommit={value=>setOrderItemQuantity(p,value)}/><button type="button" className="op-outline" disabled={busy} onClick={()=>setItems(old=>old.filter(item=>item.variant_id!==p.id))}>Quitar</button></div>)}</div>}<div className="op-total"><span>Total estimado</span><strong>{cash(total)}</strong></div><button className="op-primary" disabled={busy||items.length===0}>{busy?'Enviando…':'Crear pedido'}</button><small>El inventario se reserva únicamente cuando mostrador acepta el pedido.</small></form></div>
       :<><div className="order-work-toolbar"><label className="module-search"><span className="sr-only">Buscar pedidos</span><input type="search" placeholder="Buscar cliente, teléfono o pedido" value={search} onChange={e=>setSearch(e.target.value)}/></label></div><section className="op-orders">{visibleOrders.length===0?<p className="op-empty">{search.trim()?'No hay pedidos con esta búsqueda.':orderFilter==='history'?'No hay pedidos en el historial reciente.':stage==='local'?'No hay pedidos en tienda.':'No hay pedidos en reparto.'}</p>:visibleOrders.map((o,i)=><Fragment key={o.id}>{orderFilter==='active'&&stage==='local'&&(i===0||(visibleOrders[i-1].status==='received'?'received':['accepted','preparing'].includes(visibleOrders[i-1].status)?'preparing':'ready')!==(o.status==='received'?'received':['accepted','preparing'].includes(o.status)?'preparing':'ready'))&&<h2 className="order-group-title">{o.status==='received'?'Nuevos':['accepted','preparing'].includes(o.status)?'En preparación':'Listos para llevar'}</h2>}<article className="op-order" key={o.id}><div className="op-orderhead"><strong>#{o.id.slice(0,8)} · {o.customer_name}</strong><span>{({received:'Recibido',accepted:'Aceptado',preparing:'En preparación',ready:'Listo',out_for_delivery:'En reparto',delivered:'Entregado',cancelled:'Cancelado',return_pending:'Regreso al local'} as Record<string,string>)[o.status]||o.status}</span></div><p>{o.customer_phone} · {o.delivery_address}</p>
         <details className="op-order-detail" open={orderFilter==='active'}><summary>Productos del pedido</summary><div className="op-order-items">
           {orderLines.filter(l=>l.order_id===o.id).length===0
             ? <p className="op-item-missing">No se encontró el detalle de este pedido. Verificá antes de prepararlo.</p>
             : orderLines.filter(l=>l.order_id===o.id).map(l=>{
                 const variant=variantLabels[l.variant_id];
-                const unit=variant?.base_unit==='lb'?'lb':variant?.base_unit==='package'?'paquete':'unidad';
+                const unit=variant?.base_unit&&variant.base_unit in unitLabels?unitLabels[variant.base_unit as InventoryUnit]:'unidad';
+                const canAdjustPrice=staffRole==='admin'&&['received','accepted','preparing','ready'].includes(o.status);
                 return <div className="op-order-item" key={l.variant_id}>
                   <span><b>{variant?.name||'Producto no disponible en catálogo'}</b><small>{Number(l.quantity)} {unit} × {cash(Number(l.unit_price_cents))}</small></span>
-                  <strong>{cash(Number(l.line_total_cents))}</strong>
+                  <div className="op-order-item-actions"><strong>{cash(Number(l.line_total_cents))}</strong>{canAdjustPrice&&<details className="order-line-more"><summary aria-label="Más acciones del producto" title="Más acciones">⋮</summary><div className="order-line-menu"><button type="button" onClick={()=>openPriceEditor(o,l)}>Editar precio</button></div></details>}</div>
                 </div>;
               })}
         </div></details>
@@ -233,6 +273,17 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
         {o.status==='ready'&&<small>Listo para que un repartidor lo tome.</small>}
       </div></article></Fragment>)}</section></>}
     </div>
+    {priceEditor&&staffRole==='admin'&&<div className="op-payment-backdrop"><div className="op-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="op-price-title">
+      <h2 id="op-price-title">Editar precio del pedido</h2>
+      <p>Pedido #{priceEditor.order.id.slice(0,8)} · {priceEditor.order.customer_name}</p>
+      <div className="op-payment-total"><span>Precio actual por unidad</span><strong>{cash(Number(priceEditor.line.unit_price_cents))}</strong></div>
+      <label className="op-issue-label" htmlFor="op-price-new">Nuevo precio por unidad (Q)</label>
+      <input id="op-price-new" type="number" inputMode="decimal" min="0" max="1000000" step="0.01" value={priceDraft} disabled={busy} onChange={e=>setPriceDraft(e.target.value)} />
+      <label className="op-issue-label" htmlFor="op-price-reason">Acuerdo o motivo</label>
+      <textarea id="op-price-reason" rows={3} maxLength={250} value={priceReason} disabled={busy} onChange={e=>setPriceReason(e.target.value)} placeholder="Ej. Precio por volumen acordado por WhatsApp" />
+      <p className="op-payment-warning">El cambio afecta únicamente este pedido. No modifica el catálogo ni el costo del inventario. Se guardará quién autorizó el ajuste.</p>
+      <div className="op-payment-actions"><button type="button" className="op-outline" disabled={busy} onClick={()=>setPriceEditor(null)}>Cancelar</button><button type="button" className="op-primary" disabled={busy||priceReason.trim().length<3||priceDraft.trim()===''} onClick={()=>void saveOrderLinePrice()}>{busy?'Guardando…':'Guardar precio'}</button></div>
+    </div></div>}
     {issueOrderId&&staffRole==='admin'&&<div className="op-payment-backdrop"><div className="op-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="op-issue-title">
       <h2 id="op-issue-title">{issueAction==='reported'?'Reportar problema de transferencia':'Resolver problema de transferencia'}</h2>
       <p>Pedido #{issueOrderId.slice(0,8)}. El pedido seguirá entregado y el pago original se conservará.</p>

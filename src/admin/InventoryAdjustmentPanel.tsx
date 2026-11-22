@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
+import {unitLabels} from '../lib/units';
 import './admin.css';
 import {saveAdminAttempt,clearAdminAttempt} from './AdminPending';
 type Variant={id:string;name:string;family_id:string;base_unit:string;active:boolean};
@@ -29,10 +30,10 @@ export function InventoryAdjustmentPanel({onChanged}:{onChanged:()=>Promise<void
   if(pending&&(pending.variantId!==payload.variantId||pending.quantity!==payload.quantity||pending.reason!==payload.reason||pending.note!==payload.note)){
    setError('Hay un intento sin confirmar. No cambiés los datos antes de verificarlo.');return;
   }
-  if(!window.confirm(`¿Descontar ${amount} ${selected.base_unit} de ${selected.name}?`))return;
+  if(!window.confirm(`¿Descontar ${amount} ${unitLabels[selected.base_unit as keyof typeof unitLabels]||selected.base_unit} de ${selected.name}?`))return;
   const id=pending?.id||crypto.randomUUID();setPending({id,...payload});setBusy(true);
   try{
-   const attempt=await saveAdminAttempt('adjustment',{p_request_id:id,p_variant_id:variantId,p_quantity:amount,p_reason:reason,p_note:trimmed||null},`Ajuste de ${amount} ${selected.base_unit} de ${selected.name}`);
+   const attempt=await saveAdminAttempt('adjustment',{p_request_id:id,p_variant_id:variantId,p_quantity:amount,p_reason:reason,p_note:trimmed||null},`Ajuste de ${amount} ${unitLabels[selected.base_unit as keyof typeof unitLabels]||selected.base_unit} de ${selected.name}`);
    const r=await supabase.rpc('admin_reduce_inventory',{p_request_id:id,p_variant_id:variantId,p_quantity:amount,p_reason:reason,p_note:trimmed||null});
    if(r.error)throw r.error;
    await clearAdminAttempt(attempt);
@@ -43,8 +44,8 @@ export function InventoryAdjustmentPanel({onChanged}:{onChanged:()=>Promise<void
  return <section className="admin-panel"><div className="admin-form">
   <h3>Ajustar inventario</h3><p className="admin-hint">Descontá únicamente mercadería disponible. Los pedidos reservados no se afectan.</p>
   <label>Producto<select value={variantId} disabled={busy||!!pending} onChange={e=>setVariantId(e.target.value)}><option value="">Seleccionar producto</option>{variants.map(v=><option key={v.id} value={v.id}>{families[v.family_id]||'Otros'} · {v.name}</option>)}</select></label>
-  {selected&&<p className="admin-hint">Disponible sin reservas: {available.toFixed(4)} {selected.base_unit}</p>}
-  <label>Cantidad a descontar ({selected?.base_unit||'unidad'})<input inputMode="decimal" value={quantity} disabled={busy||!!pending} onChange={e=>setQuantity(e.target.value)} placeholder="Ej. 2"/></label>
+  {selected&&<p className="admin-hint">Disponible sin reservas: {available.toFixed(4)} {unitLabels[selected.base_unit as keyof typeof unitLabels]||selected.base_unit}</p>}
+  <label>Cantidad a descontar ({selected?unitLabels[selected.base_unit as keyof typeof unitLabels]||selected.base_unit:'unidad'})<input inputMode="decimal" value={quantity} disabled={busy||!!pending} onChange={e=>setQuantity(e.target.value)} placeholder="Ej. 2"/></label>
   <label>Motivo<select value={reason} disabled={busy||!!pending} onChange={e=>setReason(e.target.value)}><option value="waste">Merma o producto dañado</option><option value="count_difference">Diferencia de inventario</option><option value="other">Otro motivo</option></select></label>
   <label>Nota (opcional)<input value={note} disabled={busy||!!pending} onChange={e=>setNote(e.target.value)} maxLength={250} placeholder="Ej. Producto dañado"/></label>
   {error&&<p role="alert" className="admin-error">{error}</p>}{notice&&<p role="status" className="admin-ok">{notice}</p>}

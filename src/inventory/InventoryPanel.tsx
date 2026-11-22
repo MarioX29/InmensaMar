@@ -1,7 +1,9 @@
 import {useState} from 'react';
-type Product={id:string;name:string;family:string;unit:'lb'|'unit'|'package';priceCents:number;stock:number};
+import {unitLabels} from '../lib/units';
+import type {InventoryUnit} from '../lib/units';
+type Product={id:string;name:string;family:string;unit:InventoryUnit;priceCents:number;stock:number};
 const money=(c:number)=>`Q ${(c/100).toFixed(2)}`;
-const units={lb:'lb',unit:'unidad',package:'paquete'};
+const units=unitLabels;
 export function InventoryPanel({products,onPurchase}:{products:Product[];onPurchase?:()=>void}){
  const [search,setSearch]=useState('');
  const [filter,setFilter]=useState<'all'|'available'|'empty'>('all');

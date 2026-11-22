@@ -3,13 +3,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthGate } from '../auth/AuthGate';
 import { supabase } from '../lib/supabase';
+import {unitLabels,quantityStep} from '../lib/units';
+import type {InventoryUnit} from '../lib/units';
 import './orders.css';
 
-type Product = { id:string; name:string; unit:'lb'|'unit'|'package'; price_cents:number; stock:number };
+type Product = { id:string; name:string; unit:InventoryUnit; price_cents:number; stock:number };
 type Order = {id:string;created_at:string;customer_name:string;customer_phone:string;delivery_address:string;notes:string;status:string;total_cents:number};
 type Item = {variant_id:string;quantity:number};
 const cash=(n:number)=>`Q ${(n/100).toFixed(2)}`;
-const units:Record<Product['unit'],string>={lb:'lb',unit:'unidad',package:'paquete'};
+const units=unitLabels;
 const message=(error:unknown)=>{
   if (error && typeof error==='object' && 'message' in error) return String(error.message);
   return 'No se pudo completar la operación.';
@@ -85,7 +87,7 @@ function OrdersPilot(){
       {error&&<div className="op-error" role="alert">{error}<button onClick={()=>setError('')}>Cerrar</button></div>}
       {notice&&<div className="op-success" role="status">{notice}<button onClick={()=>setNotice('')}>Cerrar</button></div>}
       {view==='customer'?<div className="op-columns"><section><h2>Productos</h2><div className="op-products">{products.map(p=>{
-        const qty=items.find(x=>x.variant_id===p.id)?.quantity||0;const increment=p.unit==='lb'?0.5:1;
+        const qty=items.find(x=>x.variant_id===p.id)?.quantity||0;const increment=quantityStep(p.unit);
         return <div className="op-product" key={p.id}><div><strong>{p.name}</strong><small>{cash(p.price_cents)} / {units[p.unit]} · {p.stock} disponibles</small></div><div className="op-qty"><button aria-label={'Quitar '+p.name} onClick={()=>adjust(p,-increment)} disabled={busy||qty===0}>−</button><span>{qty}</span><button aria-label={'Agregar '+p.name} onClick={()=>adjust(p,increment)} disabled={busy||qty+increment>p.stock}>+</button></div></div>;
       })}</div></section><form className="op-form" onSubmit={e=>void submit(e)}><h2>Datos del pedido</h2><label>Nombre<input value={name} onChange={e=>setName(e.target.value)} minLength={2} maxLength={120} required/></label><label>Teléfono<input value={phone} onChange={e=>setPhone(e.target.value)} minLength={8} maxLength={22} required/></label><label>Dirección de entrega<textarea value={address} onChange={e=>setAddress(e.target.value)} minLength={5} maxLength={300} required rows={2}/></label><label>Indicaciones (opcional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} maxLength={500} rows={2}/></label><div className="op-total"><span>Total estimado</span><strong>{cash(total)}</strong></div><button className="op-primary" disabled={busy||items.length===0}>{busy?'Enviando…':'Crear pedido de prueba'}</button><small>El inventario se reserva únicamente cuando mostrador acepta el pedido.</small></form></div>
       :<section className="op-orders">{orders.length===0?<p>No hay pedidos todavía.</p>:orders.map(o=><article className="op-order" key={o.id}><div className="op-orderhead"><strong>#{o.id.slice(0,8)} · {o.customer_name}</strong><span>{o.status}</span></div><p>{o.customer_phone} · {o.delivery_address}</p>{o.notes&&<p>Nota: {o.notes}</p>}<div className="op-orderfoot"><strong>{cash(Number(o.total_cents))}</strong><small>{new Date(o.created_at).toLocaleString('es-GT')}</small></div>{o.status==='received'&&<div className="op-actions"><button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'accept')}>Aceptar y reservar</button><button className="op-outline" disabled={busy} onClick={()=>void act(o.id,'cancel')}>Cancelar</button></div>}{o.status==='accepted'&&<button className="op-outline" disabled={busy} onClick={()=>void act(o.id,'cancel')}>Cancelar y liberar reserva</button>}</article>)}</section>}

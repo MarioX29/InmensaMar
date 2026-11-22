@@ -17,3 +17,10 @@
  .storefront .sf-primary{font-size:16px}.storefront .sf-mobile-cart strong{font-size:20px}
  .storefront .sf-receipt h1{font-size:28px}.storefront .sf-receipt>p{font-size:16px}
 }
+
+.sf-cart-line-edit{display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:end!important;gap:10px 14px!important}
+.sf-cart-line-edit .im-quantity-input{grid-column:1/-1;min-width:0;max-width:260px}
+.sf-cart-line-edit>span{padding-bottom:8px!important}
+.storefront .sf-cart-line .im-quantity-parts input{width:100%;min-width:0;min-height:42px;font-size:17px;padding:8px 10px}
+.storefront .sf-cart-line .im-quantity-single input{width:100%;min-height:42px;font-size:17px}
+.sf-cart-line-edit .sf-link{justify-self:end}

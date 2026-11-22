@@ -1,7 +1,7 @@
 import './ui/theme.css';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ShoppingBasket, Package, ClipboardList, Search, Plus, Minus, X, Check, RefreshCw, Truck, Wallet, Menu } from 'lucide-react';
+import { ShoppingBasket, Package, ClipboardList, Search, Plus, X, Check, RefreshCw, Truck, Wallet, Menu } from 'lucide-react';
 import { AuthGate } from './auth/AuthGate';
 import { supabase } from './lib/supabase';
 import { errorMessage, isDefinitiveStockRejection } from './lib/checkoutErrors';
@@ -16,15 +16,18 @@ import { AdminPanel } from './admin/AdminPanel';
 import { CashOpening } from './cash/CashOpening';
 import { NotificationSetup } from './notifications/NotificationSetup';
 import './design-system.css';
+import { unitLabels, quantityStep } from './lib/units';
+import type { InventoryUnit } from './lib/units';
+import { QuantityInput } from './components/QuantityInput';
 
-type Product = { id: string; name: string; family: string; unit: 'lb'|'unit'|'package'; priceCents: number; stock: number };
+type Product = { id: string; name: string; family: string; unit: InventoryUnit; priceCents: number; stock: number };
 type Line = { id: string; qty: number };
 type Page = 'vender'|'pedidos'|'reparto'|'caja'|'inventario'|'compras'|'administracion';
 type Receipt = { saleId:string; totalCents:number; cashCents:number };
 type PendingCheckout = { requestId: string; paymentId: string; items: {variant_id:string;quantity:number}[]; cashCents:number; saleId?:string };
 const money = (cents:number) => `Q ${(cents/100).toFixed(2)}`;
-const units: Record<Product['unit'],string> = {lb:'lb',unit:'unidad',package:'paquete'};
-const step = (p:Product) => p.unit === 'lb' ? 0.5 : 1;
+const units = unitLabels;
+const step = (p:Product) => quantityStep(p.unit);
 const pendingKey = 'im-pending-checkout-v03';
 const cartDraftKey = (userId:string) => `im-cart-draft-v1:${userId}`;
 function readCartDraft(userId:string):Line[] {
@@ -74,8 +77,6 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
   const [category,setCategory]=useState('Todos');
   const [cartOpen,setCartOpen]=useState(false);
   const [cash,setCash]=useState('');
-  const [quantityUnits,setQuantityUnits]=useState<Record<string,'lb'|'oz'>>({});
-  const [quantityDrafts,setQuantityDrafts]=useState<Record<string,string>>({});
   const [recoveryConfirm,setRecoveryConfirm]=useState(false);
   const [notice,setNotice]=useState('');
   const [receipt,setReceipt]=useState<Receipt|null>(null);
@@ -132,23 +133,18 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
     setNotice('');setError('');setReceipt(null);
   }
   function setExactCash(){if(!pending&&!busy)setCash((totalCents/100).toFixed(2));}
-  function commitQuantity(p:Product, raw:string, selectedUnit:'lb'|'oz') {
+  function commitQuantity(p:Product, entered:number) {
     if(pending||busy)return;
-    const entered=Number(raw.replace(',','.'));
-    const base=selectedUnit==='oz'&&p.unit==='lb'?entered/16:entered;
-    const normalized=Math.round(base*10000)/10000;
-    if(!raw.trim()||!Number.isFinite(entered)||entered<=0||normalized<=0||normalized>100000||
+    const normalized=Math.round(entered*10000)/10000;
+    if(!Number.isFinite(entered)||normalized<=0||normalized>100000||
        (p.unit!=='lb'&&!Number.isInteger(normalized))||normalized>p.stock){
       setError('Cantidad inválida o superior al inventario disponible.');
-      setQuantityDrafts(old=>{const next={...old};delete next[p.id];return next;});
       return;
     }
     setLines(old=>old.map(l=>l.id===p.id?{...l,qty:normalized}:l));
-    setQuantityDrafts(old=>{const next={...old};delete next[p.id];return next;});
     setError('');setNotice('');setReceipt(null);
   }
   function add(p:Product){updateCart(p,step(p));}
-  function change(p:Product,delta:number){updateCart(p,delta);}
   function removeLine(id:string){if(pending||busy)return;setLines(old=>old.filter(l=>l.id!==id));setError('');setNotice('');setReceipt(null);}
   const staleLines=cart.filter(({line,product})=>cartExceedsStock(line.qty,product.stock));
   function clearAttempt(message: string, restoreCart = false) {
@@ -292,26 +288,12 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
   const cartPanel=<section className="cart">
     <div className="cart-title"><div><small>EN MOSTRADOR</small><strong>Venta actual</strong></div><button className="mobile-only icon-btn" aria-label="Cerrar carrito" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>
     {cart.length?cart.map(({line,product})=>{
-      const selectedUnit=product.unit==='lb'?(quantityUnits[product.id]||'lb'):'lb';
-      const displayed=selectedUnit==='oz'?line.qty*16:line.qty;
-      const displayValue=quantityDrafts[product.id]??String(Math.round(displayed*10000)/10000);
       return <div className="cart-line" key={line.id}>
         <div><strong>{product.name}</strong><small>{money(product.priceCents)} / {units[product.unit]}</small></div>
         {line.qty>product.stock&&<small className="cart-stock-warning">Disponible: {product.stock} {units[product.unit]}. Reducí o quitá este producto.</small>}
         <div className="cart-bottom">
           <div className="quantity-control">
-            <div className="stepper">
-              <button type="button" disabled={busy||!!pending} aria-label={`Restar ${product.name}`} onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,-(selectedUnit==='oz'?1/16:step(product)));}}><Minus size={15}/></button>
-              <input aria-label={`Cantidad de ${product.name}`} type="text" inputMode="decimal" value={displayValue} disabled={busy||!!pending}
-                onChange={e=>setQuantityDrafts(old=>({...old,[product.id]:e.target.value}))}
-                onBlur={()=>{if(quantityDrafts[product.id]!==undefined)commitQuantity(product,quantityDrafts[product.id],selectedUnit);}}
-                onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}} />
-              <button type="button" disabled={busy||!!pending} aria-label={`Sumar ${product.name}`} onClick={()=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});change(product,selectedUnit==='oz'?1/16:step(product));}}><Plus size={15}/></button>
-            </div>
-            {product.unit==='lb'?<select aria-label={`Unidad de ${product.name}`} value={selectedUnit} disabled={busy||!!pending}
-              onChange={e=>{setQuantityDrafts(d=>{const n={...d};delete n[product.id];return n;});setQuantityUnits(old=>({...old,[product.id]:e.target.value as 'lb'|'oz'}));}}>
-              <option value="lb">lb</option><option value="oz">oz</option>
-            </select>:<small>{units[product.unit]}</small>}
+            <QuantityInput unit={product.unit} value={line.qty} disabled={busy||!!pending} onCommit={quantity=>commitQuantity(product,quantity)} />
           </div>
           <b>{money(Math.round(line.qty*product.priceCents))}</b>
           <button className="remove-line" type="button" disabled={busy||!!pending} onClick={()=>removeLine(product.id)} aria-label={`Quitar ${product.name}`}>Quitar</button>

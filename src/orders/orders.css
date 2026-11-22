@@ -46,3 +46,20 @@
 .op-dispatch-check{display:inline-flex;vertical-align:middle;margin-right:9px;align-items:center}.op-dispatch-check input{width:22px;height:22px;accent-color:#247B87;cursor:pointer}
 .op-dispatch-note{color:#8b4c20;line-height:1.5}
 @media(max-width:700px){.op-dispatch-options,.op-dispatch-actions{display:grid;grid-template-columns:1fr;width:100%}.op-dispatch-actions button{width:100%;min-height:48px}.op-dispatch-box{padding:14px}}
+
+.op-selected-quantities{display:grid;gap:10px;border-top:1px solid #e0e6e4;padding-top:12px}
+.op-selected-quantities h3{margin:0;font-size:14px;color:#24434a}
+.op-selected-quantity{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 10px;padding:10px 0;border-bottom:1px solid #e8eded}
+.op-selected-quantity>strong{grid-column:1/-1;font-size:13px}
+.op-selected-quantity .im-quantity-input{grid-column:1/-1;min-width:0}
+.op-selected-quantity .op-outline{justify-self:end;min-height:36px;padding:5px 10px}
+
+/* Per-line negotiated price actions: compact on mobile, admin-only. */
+.op-order-item-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.order-line-more{position:relative}
+.order-line-more>summary{list-style:none;cursor:pointer;display:grid;place-items:center;width:34px;height:34px;border:1px solid #d4e0df;border-radius:7px;color:#284952;font-size:22px;line-height:1;user-select:none}
+.order-line-more>summary::-webkit-details-marker{display:none}
+.order-line-menu{position:absolute;right:0;top:38px;z-index:5;min-width:140px;background:white;border:1px solid #d4e0df;border-radius:8px;padding:5px;box-shadow:0 8px 24px rgba(20,47,67,.14)}
+.order-line-menu button{width:100%;border:0;background:white;text-align:left;padding:10px;border-radius:5px;color:#142f43;cursor:pointer;font:inherit;font-size:13px}
+.order-line-menu button:hover,.order-line-menu button:focus-visible{background:#eef5f3;outline:2px solid #247b87;outline-offset:1px}
+#op-price-new{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid #b8cdd0;border-radius:7px;font:inherit;font-size:16px}

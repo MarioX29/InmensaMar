@@ -41,3 +41,12 @@
 @media(max-width:390px){.quantity-control .stepper input{width:48px}.cart-bottom{gap:8px}}
 
 @media(max-width:740px){.bottom-nav{grid-template-columns:repeat(5,1fr);overflow-x:auto}.bottom-nav button{min-width:68px}}
+.auth-signout{min-height:40px;border:0;background:transparent;color:#165f6b;text-decoration:underline}
+
+/* Entrada compacta de peso: libras y onzas se convierten a libras internas. */
+.quantity-control{display:flex;align-items:center;gap:7px;min-width:0;flex:1 1 220px}
+.quantity-control .quantity-step{width:34px;min-width:34px;height:38px;min-height:38px;padding:0;display:grid;place-items:center;background:#fff;border:1px solid #d9e2e2;color:#247b87}
+.quantity-control .im-quantity-input{flex:1;min-width:150px;max-width:230px}
+.quantity-control .im-quantity-footer small{font-size:10px}
+.quantity-control .im-quantity-apply{min-height:30px;padding:4px 8px}
+@media(max-width:390px){.quantity-control{flex-basis:100%}.quantity-control .im-quantity-input{max-width:none}.quantity-control .quantity-step{width:32px;min-width:32px}}
