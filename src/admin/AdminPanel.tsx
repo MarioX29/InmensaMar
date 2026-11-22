@@ -13,7 +13,7 @@ import {StockMinimumPanel} from './StockMinimumPanel';
 import {FinanceExpensesPanel} from './FinanceExpensesPanel';
 import {FinanceSummaryPanel} from './FinanceSummaryPanel';
 import {StaffManagementPanel} from './StaffManagementPanel';
-export function AdminPanel({onChanged,initialSection='owner'}:{onChanged:()=>Promise<void>;initialSection?:'owner'|'operations'}){
+export function AdminPanel({onChanged,initialSection='owner'}:{onChanged:()=>Promise<void>;initialSection?:'owner'|'operations'|'transfers'}){
  const [pending,setPending]=useState<AdminAttempt|null>(null);
  const [checkError,setCheckError]=useState('');const [checking,setChecking]=useState(false);const [missing,setMissing]=useState(false);const [verifiedNotice,setVerifiedNotice]=useState('');
  async function refreshPending(){try{setPending(await getAdminAttempt());}catch(e){setCheckError(e instanceof Error?e.message:'Error');}}

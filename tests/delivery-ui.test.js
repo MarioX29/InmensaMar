@@ -10,6 +10,8 @@ test('active delivery routes expand inline in the same Reparto view', () => {
   assert.match(panel, /<details className="delivery-route-card delivery-route-details-card"/);
   assert.match(panel, /<summary className="delivery-route-summary">/);
   assert.match(panel, /Detalles de la salida/);
+  assert.match(panel, /cancelledAssigned\.map\(renderRouteOrder\)/);
+  assert.match(panel, /Ver \{cancelledAssigned\.length\} pedidos cancelados/);
   assert.doesNotMatch(panel, /Ver \{assigned\.length\}/);
   assert.doesNotMatch(panel, /selectedRouteId|setSelectedRouteId|Volver a salidas|Abrir salida/);
 });
@@ -22,7 +24,6 @@ test('route details show customers, contact, address, products, instructions and
   assert.match(panel, /order\?\.notes/);
   assert.match(panel, /getDeliveryPaymentLabel\(events\)/);
   assert.match(panel, /delivery-route-order-card/);
-  assert.match(panel, /delivery-route-order-list/);
 });
 
 test('route summary shows progress excluding cancelled orders and names the active denominator', () => {
@@ -44,7 +45,8 @@ test('collections are summarized by payment type instead of repeated individual 
   assert.match(panel, /Transferencias por verificar/);
   assert.match(panel, /cashPendingTotal/);
   assert.match(panel, /transferReviewTotal/);
-  assert.match(panel, /Las transferencias reportadas se revisan y confirman desde Finanzas/);
+  assert.match(panel, /onOpenTransfers\?\.\(\)/);
+  assert.match(panel, /Abrir Finanzas/);
   assert.doesNotMatch(panel, /delivery-collection-card/);
 });
 
@@ -63,13 +65,4 @@ test('return quantities require an explicit physical count before confirmation',
 test('uncertain return submissions can be retried with the same persisted request after reload', () => {
   assert.match(returns, /if\(pending\)\{\s*\/\/ Retry the exact persisted request/);
   assert.match(returns, /pending\?\.orderId===orderId\|\|group\.every/);
-});
-
-
-test('route stop cards have clear responsive structure and readable content hierarchy', () => {
-  assert.match(styles, /\.delivery-route-order-list\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(styles, /\.delivery-route-order-card\{display:grid;gap:9px/);
-  assert.match(styles, /\.delivery-route-order-head\{display:grid;grid-template-columns:24px minmax\(0,1fr\) auto/);
-  assert.match(styles, /\.delivery-route-line-items>div\{display:grid;grid-template-columns:minmax\(0,1fr\) auto auto/);
-  assert.match(styles, /@media\(max-width:700px\)\{\s*\.delivery-route-order-list\{grid-template-columns:1fr/);
 });

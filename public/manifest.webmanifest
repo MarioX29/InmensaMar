@@ -1,13 +1,13 @@
 {
   "id": "/",
-  "name": "Inmensa Mar - Operacion",
-  "short_name": "Inmensa Mar",
-  "description": "Ventas, pedidos y reparto de Inmensa Mar",
+  "name": "Inmensa-Mar Xela · Operación",
+  "short_name": "Inmensa-Mar",
+  "description": "Ventas, pedidos y reparto de Inmensa-Mar Xela",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#F7F5EF",
-  "theme_color": "#142F43",
+  "background_color": "#FFFFFF",
+  "theme_color": "#247B87",
   "lang": "es-GT",
   "icons": [
     {

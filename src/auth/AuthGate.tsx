@@ -127,7 +127,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   </section></main>;
   if (auth.status === 'loading') return <main className="auth-screen"><p>Verificando acceso…</p></main>;
   if (auth.status === 'signed_out') return <main className="auth-screen"><section className="auth-card">
-    <div className="auth-brand"><img src="/icon-192.png" alt="" width="52" height="52"/><strong>Inmensa Mar</strong></div><h1>Ingresar al negocio</h1><p>Usá tu cuenta de personal.</p>
+    <div className="auth-brand"><img src="/logo-inmensa-mar.jpg" alt="Logo de Inmensa-Mar Xela" width="72" height="72"/><strong>Inmensa Mar</strong></div><h1>Ingresar al negocio</h1><p>Usá tu cuenta de personal.</p>
     <form onSubmit={signIn} className="auth-form">
       <label htmlFor="login-email">Correo electrónico</label>
       <input id="login-email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} />
@@ -138,7 +138,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     </form>
   </section></main>;
   if (auth.status === 'password_setup') return <main className="auth-screen"><section className="auth-card">
-    <div className="auth-brand"><img src="/icon-192.png" alt="" width="52" height="52"/><strong>Inmensa Mar</strong></div>
+    <div className="auth-brand"><img src="/logo-inmensa-mar.jpg" alt="Logo de Inmensa-Mar Xela" width="72" height="72"/><strong>Inmensa Mar</strong></div>
     <h1>Creá tu contraseña</h1><p>Esta es tu primera entrada. Reemplazá la contraseña temporal por una personal que solo vos conozcás.</p>
     <form onSubmit={setFirstPassword} className="auth-form">
       <label htmlFor="new-password">Nueva contraseña</label>

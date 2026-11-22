@@ -222,7 +222,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
      <small>Las transferencias no se suman al efectivo de Caja.</small>
     </>}</section>
    </div>
-   <details className="cash-disclosure"><summary><span>Ver detalle del saldo</span><span aria-hidden="true">+</span></summary><div className="cash-disclosure-body">
+   <details className="cash-disclosure"><summary><span>Ver detalle del saldo</span><span className="cash-disclosure-chevron" aria-hidden="true">⌄</span></summary><div className="cash-disclosure-body">
     {dayBalance?<>
      <div className="cash-line"><span>Sencillo inicial</span><strong>{money(dayBalance.opening_cents)}</strong></div>
      <div className="cash-line"><span>Ventas en efectivo de mostrador</span><strong>+{money(dayBalance.counter_sales_cents)}</strong></div>
@@ -236,7 +236,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
      {day?.status==='closed'&&<div className="cash-included"><div className="cash-line"><span>Efectivo contado</span><strong>{money(dayBalance.counted_cents??0)}</strong></div><div className="cash-line"><span>Diferencia de Caja</span><strong>{money(dayBalance.drawer_difference_cents??0)}</strong></div><div className="cash-line"><span>Retiro final del dueño</span><strong>{money(dayBalance.owner_withdrawal_cents??0)}</strong></div></div>}
     </>:<p>{balanceError||'Sin desglose disponible.'}</p>}
    </div></details>
-   <details className="cash-disclosure"><summary><span>Pendientes e incidencias acumulados</span><span aria-hidden="true">+</span></summary><div className="cash-disclosure-body"><div className="cash-line"><span>Clientes con saldo pendiente</span><strong>{overview?money(overview.pending_cents):'—'}</strong></div><div className="cash-line"><span>Incidencias abiertas</span><strong>{overview?.open_issues??'—'}</strong></div><small>Estos datos incluyen jornadas anteriores.</small></div></details>
+   <details className="cash-disclosure"><summary><span>Pendientes e incidencias acumulados</span><span className="cash-disclosure-chevron" aria-hidden="true">⌄</span></summary><div className="cash-disclosure-body"><div className="cash-line"><span>Clientes con saldo pendiente</span><strong>{overview?money(overview.pending_cents):'—'}</strong></div><div className="cash-line"><span>Incidencias abiertas</span><strong>{overview?.open_issues??'—'}</strong></div><small>Estos datos incluyen jornadas anteriores.</small></div></details>
   </div>
 
   <div hidden={tab!=='drivers'||action!==null}>
@@ -247,7 +247,7 @@ export function CashPanel({staffRole}:{staffRole:'admin'|'counter'|'driver'}){
    <section className="cash-card"><div className="cash-section-head"><div><p className="cash-eyebrow">EFECTIVO RECIBIDO</p><h2>Últimas entregas</h2></div></div>
     {!handoffs.length?<p>No hay entregas registradas.</p>:<div className="cash-ledger">{handoffs.map(h=><details className="cash-ledger-entry" key={h.id}><summary><span><strong>{positions.find(p=>p.user_id===h.from_user_id)?.display_name||'Responsable'}</strong><small>{new Date(h.created_at).toLocaleString('es-GT',{timeZone:'America/Guatemala',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></span><strong>{money(h.amount_cents)}</strong></summary><p>{h.note||'Sin nota.'}</p></details>)}</div>}
    </section>
-   <details className="cash-disclosure"><summary><span>Cobros y entregas acumulados</span><span aria-hidden="true">+</span></summary><div className="cash-disclosure-body"><p>Son movimientos históricos, no el saldo del cajón ni una deuda del repartidor.</p>{positions.filter(x=>x.user_id!==currentUser).map(x=><div className="cash-history-person" key={x.user_id}><strong>{x.display_name}</strong><div className="cash-line"><span>Cobrado</span><span>{money(x.collected_cents)}</span></div><div className="cash-line"><span>Entregado</span><span>{money(x.handed_off_cents)}</span></div></div>)}{!positions.some(x=>x.user_id!==currentUser)&&<p>Sin movimientos registrados.</p>}</div></details>
+   <details className="cash-disclosure"><summary><span>Cobros y entregas acumulados</span><span className="cash-disclosure-chevron" aria-hidden="true">⌄</span></summary><div className="cash-disclosure-body"><p>Son movimientos históricos, no el saldo del cajón ni una deuda del repartidor.</p>{positions.filter(x=>x.user_id!==currentUser).map(x=><div className="cash-history-person" key={x.user_id}><strong>{x.display_name}</strong><div className="cash-line"><span>Cobrado</span><span>{money(x.collected_cents)}</span></div><div className="cash-line"><span>Entregado</span><span>{money(x.handed_off_cents)}</span></div></div>)}{!positions.some(x=>x.user_id!==currentUser)&&<p>Sin movimientos registrados.</p>}</div></details>
    {day?.status==='open'&&<button className="cash-secondary" onClick={()=>setAction('handoff')}>Recibir efectivo de otro responsable →</button>}
   </div>
 

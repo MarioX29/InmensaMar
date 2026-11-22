@@ -21,7 +21,7 @@ const formatLocalDate=(iso:string)=>new Intl.DateTimeFormat('es-GT',{timeZone:GU
 const formatLocalDateTime=(iso:string)=>new Intl.DateTimeFormat('es-GT',{timeZone:GUATEMALA_TZ,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(iso));
 const localDateKey=(iso:string)=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:GUATEMALA_TZ,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(iso));const part=(type:string)=>parts.find(x=>x.type===type)?.value||'';return `${part('year')}-${part('month')}-${part('day')}`;};
 const errorText=(e:unknown)=>e&&typeof e==='object'&&'message' in e?String(e.message):'No se pudo completar la operación.';
-export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|'driver'}) {
+export function DeliveryPanel({staffRole='admin',onOpenTransfers}:{staffRole?:'admin'|'counter'|'driver';onOpenTransfers?:()=>void}) {
  const [drivers,setDrivers]=useState<Driver[]>([]);
  const [routes,setRoutes]=useState<Route[]>([]);
  const [orders,setOrders]=useState<Order[]>([]);
@@ -189,17 +189,10 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
     const assigned=assignments.filter(item=>item.route_id===route.id).sort((a,b)=>a.stop_order-b.stop_order);
     const summary=summarizeDeliveryRoute(assigned.map(item=>orderStates[item.order_id]||'ready'));
     const routeDriver=drivers.find(driver=>driver.user_id===route.driver_id)?.display_name||'Repartidor sin nombre';
-    return <details className="delivery-route-card delivery-route-details-card" key={route.id}>
-     <summary className="delivery-route-summary">
-      <span className="delivery-route-card-head"><span><strong>{route.label}</strong><small>{routeDriver}</small></span><span className={`delivery-route-state ${route.dispatched_at?'is-dispatched':'is-planned'}`}>{route.dispatched_at?'En reparto':'Preparada'}</span></span>
-      <span className="delivery-route-metrics"><strong>{summary.total} pedidos</strong><span>{summary.delivered} entregados</span>{summary.inProgress>0&&<span>{summary.inProgress} en curso</span>}{summary.returnPending>0&&<span>{summary.returnPending} de regreso</span>}{summary.ready>0&&<span>{summary.ready} listos</span>}{summary.cancelled>0&&<span>{summary.cancelled} cancelados</span>}</span>
-      <span className="delivery-route-progress"><span className="delivery-route-progress-label"><span>Entregas activas</span><strong>{summary.progressTotal===0?'Sin pedidos activos':`${summary.delivered} de ${summary.progressTotal}`}</strong></span><span className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></span></span>
-      <span className="delivery-route-summary-hint"><span>Detalles de la salida</span><span className="delivery-route-summary-indicator" aria-hidden="true"/></span>
-     </summary>
-     <div className="delivery-route-expanded">
-      {assigned.length===0&&<p className="delivery-empty">Esta salida todavía no tiene pedidos asignados.</p>}
-      <div className="delivery-route-order-list">
-      {assigned.map((assignment,index)=>{
+    const cancelledAssigned=assigned.filter(item=>orderStates[item.order_id]==='cancelled');
+    const activeAssigned=assigned.filter(item=>orderStates[item.order_id]!=='cancelled');
+    const renderRouteOrder=(assignment:Assignment)=>{
+       const index=assigned.findIndex(item=>item.order_id===assignment.order_id);
        const order=orders.find(item=>item.id===assignment.order_id);
        const status=orderStates[assignment.order_id]||'ready';
        const lines=orderLines.filter(line=>line.order_id===assignment.order_id);
@@ -213,8 +206,18 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
         {order&&<OrderDeliveryInfo info={deliveryInfo.rows[assignment.order_id]} totalCents={order.total_cents} showNotes={false}/>}
         <div className="delivery-route-order-footer"><span className={`delivery-payment-state ${paymentLabel==='Efectivo recibido'||paymentLabel==='Transferencia verificada'?'is-paid':paymentLabel==='Sin pago registrado'?'':'is-review'}`}>{paymentLabel}</span><strong>{order?money(order.total_cents):'—'}</strong></div>
        </article>;
-      })}
-      </div>
+    };
+    return <details className="delivery-route-card delivery-route-details-card" key={route.id}>
+     <summary className="delivery-route-summary">
+      <span className="delivery-route-card-head"><span><strong>{route.label}</strong><small>{routeDriver}</small></span><span className={`delivery-route-state ${route.dispatched_at?'is-dispatched':'is-planned'}`}>{route.dispatched_at?'En reparto':'Preparada'}</span></span>
+      <span className="delivery-route-metrics"><strong>{summary.total} pedidos</strong><span>{summary.delivered} entregados</span>{summary.inProgress>0&&<span>{summary.inProgress} en curso</span>}{summary.returnPending>0&&<span>{summary.returnPending} de regreso</span>}{summary.ready>0&&<span>{summary.ready} listos</span>}{summary.cancelled>0&&<span>{summary.cancelled} cancelados</span>}</span>
+      <span className="delivery-route-progress"><span className="delivery-route-progress-label"><span>Entregas activas</span><strong>{summary.progressTotal===0?'Sin pedidos activos':`${summary.delivered} de ${summary.progressTotal}`}</strong></span><span className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></span></span>
+      <span className="delivery-route-summary-hint"><span>Detalles de la salida</span><span className="delivery-route-summary-indicator" aria-hidden="true"/></span>
+     </summary>
+     <div className="delivery-route-expanded">
+      {assigned.length===0&&<p className="delivery-empty">Esta salida todavía no tiene pedidos asignados.</p>}
+      {activeAssigned.length>0&&<div className="delivery-route-order-list">{activeAssigned.map(renderRouteOrder)}</div>}
+      {cancelledAssigned.length>0&&<details className="delivery-cancelled-orders"><summary>Ver {cancelledAssigned.length} pedidos cancelados</summary><div className="delivery-cancelled-list">{cancelledAssigned.map(renderRouteOrder)}</div></details>}
       {!route.dispatched_at&&route.status==='planning'&&assigned.length>0&&<button className="delivery-primary delivery-route-dispatch" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:route.id})}>Confirmar despacho</button>}
      </div>
     </details>;
@@ -322,13 +325,13 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
     <div className="delivery-section-heading"><h2>Cobros pendientes</h2><span>{cashPending.length+transferReview.length} pedidos</span></div>
     <div className="delivery-collection-totals">
      <div className="delivery-collection-total"><span>Efectivo pendiente</span><strong>{money(cashPendingTotal)}</strong><small>{cashPending.length} {cashPending.length===1?'pedido':'pedidos'}</small></div>
-     <div className="delivery-collection-total"><span>Transferencias por verificar</span><strong>{money(transferReviewTotal)}</strong><small>{transferReview.length} {transferReview.length===1?'pedido':'pedidos'}</small></div>
+     <button type="button" className="delivery-collection-total delivery-transfer-shortcut" onClick={()=>onOpenTransfers?.()} disabled={!onOpenTransfers}><span>Transferencias por verificar</span><strong>{money(transferReviewTotal)}</strong><small>{transferReview.length} {transferReview.length===1?'pedido':'pedidos'} · Abrir Finanzas</small></button>
     </div>
     {cashPending.length>0&&<details className="delivery-cash-pending-details">
      <summary>Registrar cobros en efectivo ({cashPending.length})</summary>
      <div className="delivery-cash-pending-list">{cashPending.map(({order})=><div className="delivery-cash-pending-row" key={order.id}><span><strong>#{order.id.slice(0,8)} · {order.customer_name}</strong><small>{money(order.total_cents)} pendientes</small></span><button type="button" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:order.id});}}>Registrar</button></div>)}</div>
     </details>}
-    {transferReview.length>0&&<p className="delivery-subtitle delivery-collection-note">Las transferencias reportadas se revisan y confirman desde Finanzas.</p>}
+    {transferReview.length>0&&!onOpenTransfers&&<p className="delivery-subtitle delivery-collection-note">Las transferencias reportadas se revisan y confirman desde Finanzas.</p>}
    </section>;
   })()}
   {confirm&&<div className="delivery-confirm-backdrop" role="presentation">
