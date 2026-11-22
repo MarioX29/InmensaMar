@@ -165,72 +165,49 @@
 }
 
 
-/* Ajustes de distribución: una sola salida o un solo cobro debe aprovechar el ancho. */
-.delivery-route-grid.is-single{grid-template-columns:minmax(0,1fr)}
-.delivery-route-grid.is-single .delivery-route-open-card{grid-template-columns:minmax(170px,.85fr) minmax(220px,1.2fr) minmax(190px,1fr);align-items:center;gap:12px 18px;padding:16px}
-.delivery-route-grid.is-single .delivery-route-open-card .delivery-route-card-head{grid-column:1;align-self:start}
-.delivery-route-grid.is-single .delivery-route-open-card .delivery-route-metrics{grid-column:2;align-content:center}
-.delivery-route-grid.is-single .delivery-route-open-card .delivery-route-progress{grid-column:3}
-.delivery-route-grid.is-single .delivery-route-open-footer{grid-column:1/-1}
 
-.delivery-collection-grid.is-single{grid-template-columns:minmax(0,1fr)}
-.delivery-collection-grid.is-single .delivery-collection-card{grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
-.delivery-collection-grid.is-single .delivery-collection-card>.delivery-primary{grid-column:auto;justify-self:end;width:auto;min-width:138px}
-@media(max-width:760px){
- .delivery-route-grid.is-single .delivery-route-open-card{grid-template-columns:minmax(0,1fr);gap:11px;padding:12px}
- .delivery-route-grid.is-single .delivery-route-open-card .delivery-route-card-head,.delivery-route-grid.is-single .delivery-route-open-card .delivery-route-metrics,.delivery-route-grid.is-single .delivery-route-open-card .delivery-route-progress,.delivery-route-grid.is-single .delivery-route-open-card .delivery-route-open-footer{grid-column:1}
- .delivery-collection-grid.is-single .delivery-collection-card{grid-template-columns:minmax(0,1fr) auto}
- .delivery-collection-grid.is-single .delivery-collection-card>.delivery-primary{grid-column:1/-1;justify-self:stretch;width:100%}
+/* Salidas: resumen plegable dentro de la misma pantalla. */
+.delivery-route-grid.is-single> .delivery-route-details-card{grid-column:1/-1}
+.delivery-route-details-card{display:block;padding:0;overflow:hidden}
+.delivery-route-summary{display:grid;gap:11px;padding:14px;cursor:pointer;list-style:none;min-width:0}
+.delivery-route-summary::-webkit-details-marker{display:none}
+.delivery-route-summary::marker{content:''}
+.delivery-route-summary:focus-visible{outline:3px solid rgba(36,123,135,.28);outline-offset:-3px}
+.delivery-route-summary .delivery-route-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}
+.delivery-route-summary .delivery-route-card-head>span:first-child{display:grid;gap:4px;min-width:0}
+.delivery-route-summary .delivery-route-card-head strong{overflow-wrap:anywhere}
+.delivery-route-summary .delivery-route-card-head small{font-size:12px;color:#64777d}
+.delivery-route-summary-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:9px;border-top:1px solid #e7eeee;color:#176b76;font-size:12px;font-weight:600}
+.delivery-route-summary-indicator{width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .15s ease}
+.delivery-route-details-card[open] .delivery-route-summary-indicator{transform:rotate(225deg)}
+.delivery-route-expanded{display:grid;gap:9px;padding:0 14px 14px;border-top:1px solid #edf1f1}
+.delivery-route-expanded .delivery-route-order-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;align-items:start;padding-top:12px}
+.delivery-route-expanded .delivery-route-order-card{min-width:0}
+.delivery-route-expanded .delivery-route-dispatch{justify-self:start;min-width:190px}
+
+/* Cobros: resumen de importes; el detalle de efectivo queda plegado y transferencias se revisan en Finanzas. */
+.delivery-collection-totals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.delivery-collection-total{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 10px;padding:11px 12px;border:1px solid #e0e9e9;border-radius:7px;background:#fff;min-width:0}
+.delivery-collection-total>span{font-size:12px;color:#60757a}
+.delivery-collection-total>strong{grid-column:2;grid-row:1/3;font-size:19px;white-space:nowrap}
+.delivery-collection-total>small{font-size:11px;color:#77878b}
+.delivery-cash-pending-details{border-top:1px solid #e7eeee;padding-top:9px}
+.delivery-cash-pending-details>summary{cursor:pointer;list-style:none;color:#176b76;font-size:12px;font-weight:600;min-height:34px;display:flex;align-items:center;justify-content:space-between}
+.delivery-cash-pending-details>summary::-webkit-details-marker{display:none}
+.delivery-cash-pending-details>summary::after{content:'+';font-size:18px;font-weight:400}
+.delivery-cash-pending-details[open]>summary::after{content:'−'}
+.delivery-cash-pending-list{display:grid;gap:0}
+.delivery-cash-pending-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #edf1f1}
+.delivery-cash-pending-row>span{display:grid;gap:3px;min-width:0}
+.delivery-cash-pending-row strong{font-size:12px;overflow-wrap:anywhere}
+.delivery-cash-pending-row small{font-size:11px;color:#64777d}
+.delivery-cash-pending-row button{flex:0 0 auto;min-height:34px;padding:6px 10px;border:1px solid #bdd0d1;border-radius:6px;background:#fff;color:#176b76;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.delivery-cash-pending-row button:disabled{opacity:.55;cursor:not-allowed}
+.delivery-collection-note{margin:0}
+@media(max-width:700px){
+ .delivery-route-expanded .delivery-route-order-list{grid-template-columns:1fr}
+ .delivery-collection-totals{grid-template-columns:1fr}
+ .delivery-route-summary{padding:12px}
+ .delivery-route-expanded{padding:0 12px 12px}
 }
-
-/* Salidas: tarjeta completa como acceso al detalle, sin lista expandida en la portada. */
-.delivery-route-open-card{width:100%;font:inherit;color:#173746;text-align:left;cursor:pointer;appearance:none;transition:border-color .15s ease,background-color .15s ease}
-.delivery-route-open-card:hover{border-color:#8bb8bd;background:#fcfefe}
-.delivery-route-open-card:focus-visible{outline:3px solid rgba(36,123,135,.28);outline-offset:2px}
-.delivery-route-open-card .delivery-route-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.delivery-route-open-card .delivery-route-card-head>span:first-child{display:grid;gap:4px;min-width:0}
-.delivery-route-open-card .delivery-route-progress{display:grid;gap:5px;width:100%}
-.delivery-route-open-card .delivery-route-open-footer{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #e5ecec;padding-top:9px;color:#176b76;font-size:13px}
-.delivery-route-open-card .delivery-route-open-footer>span{font-size:19px;line-height:1}
-.delivery-route-detail-view{gap:14px}
-.delivery-back-link{justify-self:start;display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:7px 10px;border:1px solid #d4e0e0;border-radius:7px;background:#fff;color:#176b76;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
-.delivery-back-link:hover{background:#f3f8f7}
-.delivery-route-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px;border:1px solid #d8e4e4;border-radius:9px;background:#fff}
-.delivery-route-detail-header>div{display:grid;gap:4px;min-width:0}
-.delivery-detail-eyebrow{font-size:11px;color:#64777d}
-.delivery-route-detail-header h2{margin:0;font-size:22px;overflow-wrap:anywhere}
-.delivery-route-detail-header p{margin:0;color:#62777d;font-size:13px}
-.delivery-route-detail-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.delivery-route-detail-summary>div{display:grid;gap:3px;padding:11px 12px;border:1px solid #dfe8e8;border-radius:7px;background:#fff;min-width:0}
-.delivery-route-detail-summary strong{font-size:20px;line-height:1.15}
-.delivery-route-detail-summary span{font-size:11px;color:#667a7f}
-.delivery-route-detail-view>.delivery-route-progress{padding:12px 14px;border:1px solid #dfe8e8;border-radius:7px;background:#fff}
-.delivery-route-detail-view>.delivery-route-dispatch{justify-self:end;min-width:190px;padding:0 16px}
-.delivery-route-detail-view>.delivery-section-heading{margin-top:4px}
-.delivery-route-detail-view .delivery-section-heading h3{margin:0;font-size:17px}
-.delivery-route-order-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
-.delivery-route-order-card{display:grid;gap:9px;min-width:0;padding:13px;border:1px solid #dce6e6;border-radius:8px;background:#fff}
-.delivery-route-order-head{display:flex;align-items:center;gap:8px;min-width:0}
-.delivery-route-order-head>div{display:grid;gap:2px;flex:1;min-width:0}
-.delivery-route-order-head>div>strong{font-size:14px;overflow-wrap:anywhere}
-.delivery-route-order-head>div>small{font-size:11px;color:#718187}
-.delivery-route-order-contact{display:grid;gap:4px;padding-left:30px;font-size:12px;color:#596f75;overflow-wrap:anywhere}
-.delivery-route-order-contact a{color:#176b76;text-decoration:none}
-.delivery-route-order-contact a:hover{text-decoration:underline}
-.delivery-order-status-pill{flex:0 0 auto;max-width:42%;padding:4px 7px;border-radius:5px;background:#f0f4f4;color:#53676d;font-size:10px;font-weight:600;text-align:center}
-.delivery-order-status-pill.is-delivered{background:#eaf5ef;color:#246b4c}
-.delivery-order-status-pill.is-out_for_delivery{background:#eaf3f8;color:#245f79}
-.delivery-order-status-pill.is-cancelled{background:#f1f2f3;color:#68757a}
-.delivery-order-status-pill.is-return_pending{background:#fff4e4;color:#875a16}
-.delivery-order-status-pill.is-ready{background:#eaf3f2;color:#23626a}
-.delivery-route-line-items{display:grid;gap:6px;padding:8px 0;border-top:1px solid #edf1f1;border-bottom:1px solid #edf1f1}
-.delivery-route-line-items>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:start;gap:8px;font-size:12px}
-.delivery-route-line-items>div>span:first-child{min-width:0;overflow-wrap:anywhere}
-.delivery-route-line-items>div>span:nth-child(2){color:#62777d;white-space:nowrap}
-.delivery-route-line-items>div>strong{white-space:nowrap}
-.delivery-route-order-notes{margin:0;color:#526970;font-size:12px;line-height:1.45}
-.delivery-route-order-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:2px}
-.delivery-route-order-footer>strong{font-size:15px;white-space:nowrap}
-@media(max-width:900px){.delivery-route-detail-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.delivery-route-order-list{grid-template-columns:1fr}}
-@media(max-width:560px){.delivery-route-detail-header{padding:12px}.delivery-route-detail-header h2{font-size:19px}.delivery-route-detail-summary>div{padding:9px}.delivery-route-detail-summary strong{font-size:18px}.delivery-route-detail-view>.delivery-route-dispatch{width:100%;justify-self:stretch}.delivery-route-order-card{padding:11px}}
-@media(prefers-reduced-motion:reduce){.delivery-route-open-card{transition:none}}
+@media(prefers-reduced-motion:reduce){.delivery-route-summary-indicator{transition:none}}

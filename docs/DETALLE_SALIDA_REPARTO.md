@@ -1,40 +1,29 @@
-# Detalle de salida de reparto
+# Reparto: salidas y cobros sencillos
 
-## Objetivo
+## Salidas en curso
 
-La tarjeta de una salida activa funciona como acceso al detalle de esa salida. La lista principal ya no despliega pedidos dentro de la tarjeta ni muestra el texto «Ver pedidos de esta salida».
+Cada salida permanece en la pantalla principal como una tarjeta plegable. Al abrirla, se muestran debajo los pedidos asignados, con cliente, teléfono, dirección, productos, cantidades, indicaciones, estado de entrega y estado de pago. No se navega a otra pantalla ni se muestra un enlace redundante.
 
-## Vista principal
+La tarjeta muestra la etiqueta de salida, repartidor, estado, cantidad de pedidos, resumen por estado y progreso de pedidos activos. Los pedidos cancelados se excluyen del denominador del progreso y se muestran por separado. Si existe una sola salida, utiliza todo el ancho disponible; con varias salidas, la cuadrícula se adapta al tamaño de pantalla.
 
-Cada tarjeta muestra únicamente el resumen operativo: identificador/etiqueta de salida, repartidor, estado, cantidad de pedidos, resumen por estado y progreso de entregas activas. El progreso excluye los pedidos cancelados y el texto lo indica explícitamente.
+La acción de confirmar despacho permanece dentro del detalle plegado y solo aparece para salidas en planificación que tengan pedidos asignados.
 
-Al seleccionar la tarjeta se abre la vista de detalle. La tarjeta completa es accesible con teclado como un botón.
+## Cobros de entregas
 
-## Detalle de salida
+La pantalla ya no muestra una tarjeta por cada pedido con cobro pendiente. Muestra dos importes resumidos: efectivo pendiente y transferencias por verificar.
 
-La vista dedicada incluye:
+Los pedidos con efectivo pendiente se pueden consultar en una lista plegable, donde cada fila conserva la acción de registrar cobro. Las transferencias reportadas se verifican desde Finanzas; Reparto informa cuántas y el monto agregado, sin duplicar la gestión bancaria.
 
-- Acción para volver a la lista de salidas.
-- Etiqueta, estado, repartidor y fecha de creación.
-- Resumen de pedidos, entregados, en curso, cancelados y otros estados relevantes.
-- Progreso calculado sobre pedidos activos (los cancelados no cuentan en el denominador).
-- Acción de confirmar despacho cuando la salida sigue en planificación.
-- Cada parada con nombre del cliente, identificador, estado, teléfono, dirección, productos, cantidades, subtotal y total.
-- Indicaciones y preferencias de entrega/pago cuando están disponibles.
-- Estado de cobro: pendiente, efectivo recibido, transferencia por verificar o transferencia verificada.
+Los cobros registrados y su historial se consultan desde Finanzas. El backend actual no admite abonos parciales; esta actualización no agrega ni simula esa capacidad.
 
-Los datos proceden de las tablas y RPC existentes. No se agrega ni modifica una operación de negocio ni se introduce una migración SQL.
+## Devoluciones e historial
 
-## Datos y límites
+Se conservan los flujos existentes. Las devoluciones requieren conteo físico explícito antes de confirmar y registran la diferencia como pérdida. El historial mantiene filtros y la tabla de escritorio con su presentación adaptable.
 
-- Se conservan los RPC de despacho, entrega, cobro, devolución y reporte de incidencias existentes.
-- Las líneas de pedido se consultan desde `customer_order_lines` y sus nombres/unidades desde `product_variants`.
-- Las preferencias de entrega se consultan mediante `order_delivery_preferences`.
-- No se implementan cobros parciales en esta actualización.
-- La vista utiliza los pedidos y asignaciones recuperados por la pantalla; la carga de la consulta de pedidos se amplía a 500 para cubrir las asignaciones devueltas por la consulta actual (también limitada a 500).
+## Datos y seguridad
+
+No se agregan migraciones ni RPC. La implementación reutiliza las consultas y operaciones existentes de rutas, asignaciones, pedidos, líneas de pedido, pagos y devoluciones. No se modifica Supabase Cloud.
 
 ## Validación
 
-- Pruebas automatizadas de funciones de presentación y estructura de interfaz.
-- Transpilación sintáctica de `DeliveryPanel.tsx`.
-- El build integral debe volver a ejecutarse en el entorno de CI/Cloudflare porque el entorno local no tiene instaladas todas las dependencias ni definiciones de tipos.
+Las pruebas de interfaz verifican el despliegue inline de salidas, la información del detalle, el progreso, los resúmenes de cobros y la confirmación física de devoluciones. El build completo debe comprobarse en CI/Cloudflare.
