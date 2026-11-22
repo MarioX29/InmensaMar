@@ -26,9 +26,10 @@ test('secondary order actions use an accessible three-dot menu', () => {
   assert.match(panel, /className="order-more-menu"/);
 });
 
-test('compact order cards remain single-column until enough desktop width is available', () => {
-  assert.match(css, /\.op-orders\{grid-template-columns:1fr/);
-  assert.match(css, /@media\(min-width:1100px\)\{\.op-orders\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+test('compact order cards use one column on phones, two on tablets, and three on desktops', () => {
+  assert.match(css, /\.op-orders\{grid-template-columns:minmax\(0,1fr\);align-items:start\}/);
+  assert.match(css, /@media\(min-width:680px\)\{\.op-orders\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css, /@media\(min-width:980px\)\{\.op-orders\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
 });
 
 test('new-order product removal uses a discreet accessible X control', () => {
