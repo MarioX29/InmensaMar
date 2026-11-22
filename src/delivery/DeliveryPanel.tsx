@@ -194,10 +194,11 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
       <span className="delivery-route-card-head"><span><strong>{route.label}</strong><small>{routeDriver}</small></span><span className={`delivery-route-state ${route.dispatched_at?'is-dispatched':'is-planned'}`}>{route.dispatched_at?'En reparto':'Preparada'}</span></span>
       <span className="delivery-route-metrics"><strong>{summary.total} pedidos</strong><span>{summary.delivered} entregados</span>{summary.inProgress>0&&<span>{summary.inProgress} en curso</span>}{summary.returnPending>0&&<span>{summary.returnPending} de regreso</span>}{summary.ready>0&&<span>{summary.ready} listos</span>}{summary.cancelled>0&&<span>{summary.cancelled} cancelados</span>}</span>
       <span className="delivery-route-progress"><span className="delivery-route-progress-label"><span>Entregas activas</span><strong>{summary.progressTotal===0?'Sin pedidos activos':`${summary.delivered} de ${summary.progressTotal}`}</strong></span><span className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></span></span>
-      <span className="delivery-route-summary-hint"><span>Ver {assigned.length} {assigned.length===1?'pedido':'pedidos'}</span><span className="delivery-route-summary-indicator" aria-hidden="true"/></span>
+      <span className="delivery-route-summary-hint"><span>Detalles de la salida</span><span className="delivery-route-summary-indicator" aria-hidden="true"/></span>
      </summary>
      <div className="delivery-route-expanded">
       {assigned.length===0&&<p className="delivery-empty">Esta salida todavía no tiene pedidos asignados.</p>}
+      <div className="delivery-route-order-list">
       {assigned.map((assignment,index)=>{
        const order=orders.find(item=>item.id===assignment.order_id);
        const status=orderStates[assignment.order_id]||'ready';
@@ -213,6 +214,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
         <div className="delivery-route-order-footer"><span className={`delivery-payment-state ${paymentLabel==='Efectivo recibido'||paymentLabel==='Transferencia verificada'?'is-paid':paymentLabel==='Sin pago registrado'?'':'is-review'}`}>{paymentLabel}</span><strong>{order?money(order.total_cents):'—'}</strong></div>
        </article>;
       })}
+      </div>
       {!route.dispatched_at&&route.status==='planning'&&assigned.length>0&&<button className="delivery-primary delivery-route-dispatch" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:route.id})}>Confirmar despacho</button>}
      </div>
     </details>;
