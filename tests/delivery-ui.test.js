@@ -6,10 +6,12 @@ const panel = readFileSync(new URL('../src/delivery/DeliveryPanel.tsx', import.m
 const returns = readFileSync(new URL('../src/delivery/DeliveryReturnsPanel.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/delivery/delivery.css', import.meta.url), 'utf8');
 
-test('active delivery routes render compact independent cards and expandable stop details', () => {
+test('active delivery routes render as full-card navigation into a dedicated route detail view', () => {
   assert.match(panel, /className=\{`delivery-route-grid\$\{activeRoutes\.length===1\?' is-single':''\}`\}/);
-  assert.match(panel, /className="delivery-route-card"/);
-  assert.match(panel, /Ver pedidos de esta salida/);
+  assert.match(panel, /delivery-route-card delivery-route-open-card/);
+  assert.match(panel, /setSelectedRouteId\(r\.id\)/);
+  assert.match(panel, /Volver a salidas/);
+  assert.doesNotMatch(panel, /Ver pedidos de esta salida/);
 });
 
 test('route cards summarize delivered, in-progress, returned, ready, and cancelled stops', () => {
@@ -48,15 +50,30 @@ test('uncertain return submissions can be retried with the same persisted reques
 test('a single active route uses the full available width with a horizontal summary', () => {
   assert.match(panel, /activeRoutes\.length===1/);
   assert.match(styles, /\.delivery-route-grid\.is-single\{grid-template-columns:minmax\(0,1fr\)\}/);
-  assert.match(styles, /\.delivery-route-grid\.is-single \.delivery-route-card\{grid-template-columns:/);
+  assert.match(styles, /\.delivery-route-grid\.is-single \.delivery-route-open-card\{grid-template-columns:/);
 });
 
 test('route progress label makes clear cancelled orders are excluded from the denominator', () => {
-  assert.match(panel, /Progreso de pedidos activos/);
+  assert.match(panel, /Entregas activas/);
   assert.match(panel, /summary\.progressTotal===0\?'Sin pedidos activos':`\$\{summary\.delivered\} de \$\{summary\.progressTotal\}`/);
 });
 
 test('a single pending collection uses the full available width', () => {
   assert.match(panel, /delivery-collection-grid\$\{latePending\.length\+transferReview\.length===1\?' is-single':''\}/);
   assert.match(styles, /\.delivery-collection-grid\.is-single\{grid-template-columns:minmax\(0,1fr\)\}/);
+});
+
+test('route detail includes customer contact, address, products, delivery instructions and payment state', () => {
+  assert.match(panel, /customer_phone/);
+  assert.match(panel, /delivery_address/);
+  assert.match(panel, /customer_order_lines/);
+  assert.match(panel, /deliveryInfo\.rows\[assignment\.order_id\]/);
+  assert.match(panel, /getDeliveryPaymentLabel\(events\)/);
+  assert.match(panel, /delivery-route-order-card/);
+});
+
+test('route detail has a back action and route cards do not expand stops inline', () => {
+  assert.match(panel, /Volver a salidas/);
+  assert.match(panel, /Abrir salida/);
+  assert.doesNotMatch(panel, /<details className="delivery-route-details"/);
 });

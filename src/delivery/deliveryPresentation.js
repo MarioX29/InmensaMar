@@ -37,3 +37,22 @@ export function calculateReturnAmounts(dispatched, good) {
     damaged: Math.round((dispatched - good) * 10000) / 10000,
   };
 }
+
+export function deliveryOrderStatusLabel(status) {
+  const labels = {
+    received: 'Recibido',
+    accepted: 'Aceptado',
+    preparing: 'En preparación',
+    ready: 'Listo',
+    out_for_delivery: 'En reparto',
+    return_pending: 'Regreso al local',
+    delivered: 'Entregado',
+    cancelled: 'Cancelado',
+  };
+  return labels[status] || 'Estado no disponible';
+}
+
+export function formatDeliveryQuantity(quantity) {
+  if (!Number.isFinite(quantity)) return '—';
+  return new Intl.NumberFormat('es-GT', { maximumFractionDigits: 4 }).format(quantity);
+}

@@ -16,3 +16,6 @@ export type DeliveryRouteSummary = {
 export function summarizeDeliveryRoute(states: string[]): DeliveryRouteSummary;
 export function getDeliveryPaymentLabel(events: DeliveryPaymentEvent[]): string;
 export function calculateReturnAmounts(dispatched: number, good: number): { good: number; damaged: number };
+
+export function deliveryOrderStatusLabel(status: string): string;
+export function formatDeliveryQuantity(quantity: number): string;

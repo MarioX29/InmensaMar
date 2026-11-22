@@ -4,10 +4,13 @@ import { supabase } from '../lib/supabase';
 import './delivery.css';
 import {OrderDeliveryInfo,useDeliveryPreferences} from '../orders/OrderDeliveryInfo';
 import { DeliveryReturnsPanel } from './DeliveryReturnsPanel';
-import { getDeliveryPaymentLabel, summarizeDeliveryRoute } from './deliveryPresentation.js';
+import { getDeliveryPaymentLabel, summarizeDeliveryRoute, deliveryOrderStatusLabel, formatDeliveryQuantity } from './deliveryPresentation.js';
+import { unitLabels, isInventoryUnit } from '../lib/units';
 type Driver={user_id:string;display_name:string};
 type Route={id:string;label:string;driver_id:string;created_at:string;dispatched_at:string|null;status:string};
-type Order={id:string;customer_name:string;total_cents:number;status?:string};
+type Order={id:string;created_at:string;customer_name:string;customer_phone:string;delivery_address:string;notes:string;total_cents:number;status?:string};
+type OrderLine={id:string;order_id:string;variant_id:string;quantity:number;unit_price_cents:number;line_total_cents:number};
+type VariantLabel={id:string;name:string;base_unit:string};
 type Assignment={order_id:string;route_id:string;stop_order:number};
 type PaymentEvent={order_id:string;event_kind:'pending'|'payment';method:string;amount_cents:number;verified_at:string|null};
 type ReadyOrder={order_id:string;customer_name:string;delivery_address:string;total_cents:number};
@@ -25,7 +28,9 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [assignments,setAssignments]=useState<Assignment[]>([]);
  const [mine,setMine]=useState<DriverOrder[]>([]);
  const [readyDriver,setReadyDriver]=useState<ReadyOrder[]>([]);
- const deliveryInfo=useDeliveryPreferences([...mine.map(o=>o.order_id),...readyDriver.map(o=>o.order_id)]);
+ const [orderLines,setOrderLines]=useState<OrderLine[]>([]);
+ const [variantLabels,setVariantLabels]=useState<Record<string,VariantLabel>>({});
+ const deliveryInfo=useDeliveryPreferences([...mine.map(o=>o.order_id),...readyDriver.map(o=>o.order_id),...assignments.map(a=>a.order_id)]);
  const [driverSelected,setDriverSelected]=useState<string[]>([]);
  const [driverPending,setDriverPending]=useState<{requestId:string;orderIds:string[]}|null>(()=>{try{return JSON.parse(localStorage.getItem('im-driver-outing-pending')||'null');}catch{return null;}});
  const [failureReason,setFailureReason]=useState('absent');
@@ -45,6 +50,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
  const [historySearch,setHistorySearch]=useState('');
  const [historySort,setHistorySort]=useState<'newest'|'oldest'>('newest');
  const [expandedRoute,setExpandedRoute]=useState<string|null>(null);
+ const [selectedRouteId,setSelectedRouteId]=useState<string|null>(null);
  const [confirm,setConfirm]=useState<{kind:'outing'|'delivery';id:string}|null>(null);
  const [error,setError]=useState('');const [notice,setNotice]=useState('');
  const load=useCallback(async(forceSessionRefresh=false)=>{
@@ -81,7 +87,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   const [d,r,o,a,m,p]=await Promise.all([
    supabase.from('staff_profiles').select('user_id,display_name').in('role',['driver','admin']).eq('active',true),
    supabase.from('delivery_routes').select('id,label,driver_id,created_at,dispatched_at,status').order('created_at',{ascending:false}).limit(100),
-   supabase.from('customer_orders').select('id,customer_name,total_cents,status').in('status',['ready','out_for_delivery','return_pending','delivered','cancelled']).order('created_at',{ascending:false}).limit(100),
+   supabase.from('customer_orders').select('id,created_at,customer_name,customer_phone,delivery_address,notes,total_cents,status').in('status',['ready','out_for_delivery','return_pending','delivered','cancelled']).order('created_at',{ascending:false}).limit(500),
    supabase.from('delivery_assignments').select('order_id,route_id,stop_order').limit(500),
    supabase.rpc('my_delivery_orders_v2'),
    supabase.from('delivery_payment_events').select('order_id,event_kind,method,amount_cents,verified_at')
@@ -91,6 +97,19 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   setDrivers(d.data||[]);setRoutes(r.data||[]);setOrders(o.data||[]);setAssignments(a.data||[]);setPaymentEvents(p.data||[]);
   setOrderStates(Object.fromEntries((o.data||[]).map(x=>[x.id,x.status])));
   if(!m.error)setMine(m.data||[]);
+  const orderIds=(o.data||[]).map(x=>x.id);
+  if(orderIds.length){
+   const linesResult=await supabase.from('customer_order_lines').select('id,order_id,variant_id,quantity,unit_price_cents,line_total_cents').in('order_id',orderIds);
+   if(linesResult.error){setError(`No se pudieron cargar los productos de las salidas: ${errorText(linesResult.error)}`);return;}
+   const lines=(linesResult.data||[]) as OrderLine[];
+   const variantIds=[...new Set(lines.map(line=>line.variant_id))];
+   if(variantIds.length){
+    const variantsResult=await supabase.from('product_variants').select('id,name,base_unit').in('id',variantIds);
+    if(variantsResult.error){setError(`No se pudieron cargar los nombres de los productos: ${errorText(variantsResult.error)}`);return;}
+    setVariantLabels(Object.fromEntries(((variantsResult.data||[]) as VariantLabel[]).map(variant=>[variant.id,variant])));
+   }else setVariantLabels({});
+   setOrderLines(lines);
+  }else{setOrderLines([]);setVariantLabels({});}
   setError('');
  },[staffRole]);
  useEffect(()=>{
@@ -163,24 +182,62 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
   <details className="feature-note"><summary>Cómo registrar salidas y cobros</summary><p>Confirmar salida registra la salida física del producto. Al entregar, registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada requiere verificación.</p></details>
   {deliveryInfo.failed&&<p role="alert" className="delivery-warning">No pudimos cargar ubicación y preferencias de pago. <button type="button" onClick={deliveryInfo.retry}>Reintentar datos de entrega</button></p>}{error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
-  {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>Salidas en curso</button><button type="button" className={view==='returns'?'selected':''} aria-pressed={view==='returns'} onClick={()=>setView('returns')}>Devoluciones</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
-  {staffRole!=='driver'&&view==='active'&&<section className="delivery-workspace">
+  {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>Salidas en curso</button><button type="button" className={view==='returns'?'selected':''} aria-pressed={view==='returns'} onClick={()=>{setSelectedRouteId(null);setView('returns')}}>Devoluciones</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>{setSelectedRouteId(null);setView('history')}}>Historial</button></div>}
+  {staffRole!=='driver'&&view==='active'&&(selectedRouteId?(()=>{
+   const route=activeRoutes.find(item=>item.id===selectedRouteId);
+   if(!route)return <section className="delivery-workspace"><button type="button" className="delivery-back-link" onClick={()=>setSelectedRouteId(null)}>Volver a salidas</button><p className="delivery-empty">Esta salida ya no está activa. Actualizá la información para consultar su estado.</p></section>;
+   const assigned=assignments.filter(item=>item.route_id===route.id).sort((a,b)=>a.stop_order-b.stop_order);
+   const states=assigned.map(item=>orderStates[item.order_id]||'ready');
+   const summary=summarizeDeliveryRoute(states);
+   const routeDriver=drivers.find(driver=>driver.user_id===route.driver_id)?.display_name||'Repartidor sin nombre';
+   return <section className="delivery-workspace delivery-route-detail-view">
+    <button type="button" className="delivery-back-link" onClick={()=>setSelectedRouteId(null)}><span aria-hidden="true">←</span> Volver a salidas</button>
+    <header className="delivery-route-detail-header">
+     <div><span className="delivery-detail-eyebrow">Detalle de salida</span><h2>{route.label}</h2><p>{routeDriver} · Creada {formatLocalDateTime(route.created_at)}</p></div>
+     <span className={`delivery-route-state ${route.dispatched_at?'is-dispatched':'is-planned'}`}>{route.dispatched_at?'En reparto':'Preparada'}</span>
+    </header>
+    <div className="delivery-route-detail-summary">
+     <div><strong>{summary.total}</strong><span>Pedidos</span></div>
+     <div><strong>{summary.delivered}</strong><span>Entregados</span></div>
+     <div><strong>{summary.inProgress}</strong><span>En curso</span></div>
+     <div><strong>{summary.cancelled}</strong><span>Cancelados</span></div>
+     {summary.returnPending>0&&<div><strong>{summary.returnPending}</strong><span>De regreso</span></div>}
+     {summary.ready>0&&<div><strong>{summary.ready}</strong><span>Listos</span></div>}
+    </div>
+    <div className="delivery-route-progress"><div className="delivery-route-progress-label"><span>Entregas de pedidos activos</span><strong>{summary.progressTotal===0?'Sin pedidos activos':`${summary.delivered} de ${summary.progressTotal}`}</strong></div><div className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></div></div>
+    {!route.dispatched_at&&route.status==='planning'&&assigned.length>0&&<button className="delivery-primary delivery-route-dispatch" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:route.id})}>Confirmar despacho</button>}
+    <div className="delivery-section-heading"><h3>Pedidos de esta salida</h3><span>{assigned.length} en total</span></div>
+    <div className="delivery-route-order-list">{assigned.map((assignment,index)=>{
+     const order=orders.find(item=>item.id===assignment.order_id);
+     const status=orderStates[assignment.order_id]||'ready';
+     const lines=orderLines.filter(line=>line.order_id===assignment.order_id);
+     const events=paymentEvents.filter(event=>event.order_id===assignment.order_id);
+     const paymentLabel=getDeliveryPaymentLabel(events);
+     return <article className="delivery-route-order-card" key={assignment.order_id}>
+      <div className="delivery-route-order-head"><span className="delivery-stop-number">{index+1}</span><div><strong>{order?.customer_name||`Pedido #${assignment.order_id.slice(0,8)}`}</strong><small>Pedido #{assignment.order_id.slice(0,8)}</small></div><span className={`delivery-order-status-pill is-${status}`}>{deliveryOrderStatusLabel(status)}</span></div>
+      {order&&<div className="delivery-route-order-contact"><a href={`tel:${order.customer_phone.replace(/[^+0-9]/g,'')}`}>{order.customer_phone}</a><span>{order.delivery_address}</span></div>}
+      {lines.length>0&&<div className="delivery-route-line-items">{lines.map(line=>{const variant=variantLabels[line.variant_id];const baseUnit=variant?.base_unit;const unit=isInventoryUnit(baseUnit)?unitLabels[baseUnit]:(baseUnit||'unidad');return <div key={line.id}><span>{variant?.name||'Producto'}</span><span>{formatDeliveryQuantity(Number(line.quantity))} {unit}</span><strong>{money(line.line_total_cents)}</strong></div>;})}</div>}
+      {order?.notes&&<p className="delivery-route-order-notes"><strong>Indicaciones:</strong> {order.notes}</p>}
+      {order&&<OrderDeliveryInfo info={deliveryInfo.rows[assignment.order_id]} totalCents={order.total_cents} showNotes={false}/>}
+      <div className="delivery-route-order-footer"><span className={`delivery-payment-state ${paymentLabel==='Efectivo recibido'||paymentLabel==='Transferencia verificada'?'is-paid':paymentLabel==='Sin pago registrado'?'':'is-review'}`}>{paymentLabel}</span><strong>{order?money(order.total_cents):'—'}</strong></div>
+     </article>;
+    })}</div>
+   </section>;
+  })():<section className="delivery-workspace">
    <div className="delivery-section-heading"><h2>Salidas en curso</h2><span>{activeRoutes.length} activas</span></div>
    {activeRoutes.length===0&&<div className="delivery-empty">No hay salidas en curso.</div>}
    <div className={`delivery-route-grid${activeRoutes.length===1?' is-single':''}`}>{activeRoutes.map(r=>{
     const assigned=assignments.filter(a=>a.route_id===r.id).sort((a,b)=>a.stop_order-b.stop_order);
-    const states=assigned.map(a=>orderStates[a.order_id]||'ready');
-    const summary=summarizeDeliveryRoute(states);
+    const summary=summarizeDeliveryRoute(assigned.map(a=>orderStates[a.order_id]||'ready'));
     const routeDriver=drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor sin nombre';
-    return <article className="delivery-route-card" key={r.id}>
-     <div className="delivery-route-card-head"><div><strong>{r.label}</strong><small>{routeDriver}</small></div><span className={`delivery-route-state ${r.dispatched_at?'is-dispatched':'is-planned'}`}>{r.dispatched_at?'En reparto':'Preparada'}</span></div>
-     <div className="delivery-route-metrics"><strong>{summary.total} pedidos</strong><span>{summary.delivered} entregados</span>{summary.inProgress>0&&<span>{summary.inProgress} en curso</span>}{summary.returnPending>0&&<span>{summary.returnPending} de regreso</span>}{summary.ready>0&&<span>{summary.ready} listos</span>}{summary.cancelled>0&&<span>{summary.cancelled} cancelados</span>}</div>
-     <div className="delivery-route-progress"><div className="delivery-route-progress-label"><span>Progreso de pedidos activos</span><strong>{summary.progressTotal===0?'Sin pedidos activos':`${summary.delivered} de ${summary.progressTotal}`}</strong></div><div className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></div></div>
-     <details className="delivery-route-details"><summary>Ver pedidos de esta salida</summary><div className="delivery-route-stops">{assigned.map((a,i)=><div className="delivery-stop-card" key={a.order_id}><span className="delivery-stop-number">{i+1}</span><div><strong>{orders.find(o=>o.id===a.order_id)?.customer_name||`Pedido #${a.order_id.slice(0,8)}`}</strong><small>{orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='out_for_delivery'?'En reparto':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]==='return_pending'?'Regreso al local':'Listo'}</small></div></div>)}</div></details>
-     {!r.dispatched_at&&r.status==='planning'&&assigned.length>0&&<button className="delivery-primary delivery-route-dispatch" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:r.id})}>Confirmar despacho</button>}
-    </article>;
+    return <button type="button" className="delivery-route-card delivery-route-open-card" key={r.id} onClick={()=>setSelectedRouteId(r.id)} aria-label={`Abrir ${r.label}, ${summary.total} pedidos, repartidor ${routeDriver}`}>
+     <span className="delivery-route-card-head"><span><strong>{r.label}</strong><small>{routeDriver}</small></span><span className={`delivery-route-state ${r.dispatched_at?'is-dispatched':'is-planned'}`}>{r.dispatched_at?'En reparto':'Preparada'}</span></span>
+     <span className="delivery-route-metrics"><strong>{summary.total} pedidos</strong><span>{summary.delivered} entregados</span>{summary.inProgress>0&&<span>{summary.inProgress} en curso</span>}{summary.returnPending>0&&<span>{summary.returnPending} de regreso</span>}{summary.ready>0&&<span>{summary.ready} listos</span>}{summary.cancelled>0&&<span>{summary.cancelled} cancelados</span>}</span>
+     <span className="delivery-route-progress"><span className="delivery-route-progress-label"><span>Entregas activas</span><strong>{summary.progressTotal===0?'Sin pedidos activos':`${summary.delivered} de ${summary.progressTotal}`}</strong></span><span className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></span></span>
+     <span className="delivery-route-open-footer"><strong>Abrir salida</strong><span aria-hidden="true">→</span></span>
+    </button>;
    })}</div>
-  </section>}
+  </section>)}
   {staffRole!=='driver'&&view==='history'&&<section className="delivery-card"><div className="delivery-card-head"><h2>Historial de reparto</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Consultá salidas cerradas por fecha y repartidor. Se muestran hasta las 100 salidas más recientes cargadas; los filtros no son un reporte completo de períodos anteriores.</p>
    <details className="filter-disclosure"><summary>Filtrar historial</summary><div className="delivery-filters">

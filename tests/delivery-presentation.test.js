@@ -23,3 +23,19 @@ test('return reconciliation calculates damaged quantity only after explicit good
   assert.deepEqual(calculateReturnAmounts(3.5, 2), { good: 2, damaged: 1.5 });
   assert.throws(() => calculateReturnAmounts(3, 3.1));
 });
+
+test('route detail uses human-readable delivery order statuses', async () => {
+  const { deliveryOrderStatusLabel } = await import('../src/delivery/deliveryPresentation.js');
+  assert.equal(deliveryOrderStatusLabel('out_for_delivery'), 'En reparto');
+  assert.equal(deliveryOrderStatusLabel('return_pending'), 'Regreso al local');
+  assert.equal(deliveryOrderStatusLabel('delivered'), 'Entregado');
+  assert.equal(deliveryOrderStatusLabel('cancelled'), 'Cancelado');
+  assert.equal(deliveryOrderStatusLabel('unknown'), 'Estado no disponible');
+});
+
+test('route detail formats quantities without unnecessary trailing zeroes', async () => {
+  const { formatDeliveryQuantity } = await import('../src/delivery/deliveryPresentation.js');
+  assert.equal(formatDeliveryQuantity(2), '2');
+  assert.equal(formatDeliveryQuantity(1.25), '1.25');
+  assert.equal(formatDeliveryQuantity(Number.NaN), '—');
+});
