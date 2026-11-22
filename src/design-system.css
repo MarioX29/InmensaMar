@@ -39,3 +39,54 @@ body{margin:0}button,input,select,textarea{font-family:inherit}button,a,input,se
 .shell .cart-line-head .remove-line{flex:0 0 40px;width:40px;min-width:40px;height:40px;min-height:40px;margin:-7px -8px 0 4px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--im-muted);display:grid;place-items:center}
 .shell .cart-line-head .remove-line:hover{background:#f0f4f3;color:var(--im-ink)}
 .shell .cart-line-head .remove-line:focus-visible{outline:2px solid var(--im-teal);outline-offset:2px}
+
+
+/* Orders board: override the legacy full-width list so each order is a compact tile.
+   The higher-specificity shell rules above previously forced a single white panel. */
+.shell .orders-module .op-orders{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));
+  align-items:stretch;
+  align-content:start;
+  gap:14px;
+  padding:0;
+  background:transparent;
+  border-radius:0;
+  min-width:0;
+}
+.shell .orders-module .order-group-title{grid-column:1/-1;margin:8px 0 0;padding:8px 0 2px}
+.shell .orders-module .op-order,
+.shell .orders-module .op-order:last-child{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+  padding:14px;
+  background:#fff;
+  border:1px solid var(--im-line);
+  border-radius:8px;
+  box-shadow:none;
+}
+.shell .orders-module .op-orderhead{align-items:center;gap:10px;flex-wrap:nowrap}
+.shell .orders-module .op-orderhead>strong{font-size:16px;line-height:1.3}
+.shell .orders-module .op-order-head-tools{display:flex;align-items:center;gap:6px;flex:none}
+.shell .orders-module .order-more-options{position:relative;margin:0;border:0}
+.shell .orders-module .order-more-options>summary{display:grid;place-items:center;width:36px;height:36px;min-height:36px;padding:0;border:1px solid var(--im-line);border-radius:7px;background:#fff;color:var(--im-muted);font-size:20px;line-height:1;cursor:pointer}
+.shell .orders-module .order-more-options>summary::-webkit-details-marker{display:none}
+.shell .orders-module .order-more-menu{top:40px;right:0;bottom:auto}
+.shell .orders-module .op-order-contact{font-size:12px;line-height:1.4;margin:5px 0 4px}
+.shell .orders-module .op-order-detail{margin:5px 0 0}
+.shell .orders-module .op-order-detail>summary{min-height:34px;padding:5px 0;font-size:12px}
+.shell .orders-module .op-orderfoot{margin:6px 0 2px;padding:8px 0 0;align-items:end;border-top:1px solid var(--im-line)}
+.shell .orders-module .op-orderfoot>div{display:grid;gap:0}
+.shell .orders-module .op-orderfoot>div>strong{font-size:20px}
+.shell .orders-module .op-orderfoot>small{font-size:11px}
+.shell .orders-module .op-actions{margin-top:auto;padding-top:8px;gap:8px}
+.shell .orders-module .op-actions>.op-primary{min-width:0;min-height:38px;padding:8px 12px;font-size:13px}
+@media(max-width:420px){
+  .shell .orders-module .op-orders{grid-template-columns:minmax(0,1fr);gap:10px}
+  .shell .orders-module .op-order{padding:13px}
+}
+.shell .orders-module .op-order-head-tools .op-status{display:inline-flex;align-items:center;font-size:12px;line-height:1.2;white-space:nowrap;padding:5px 8px;border-radius:5px;background:#edf3f2;color:#31545a}
+.shell .orders-module .op-order-head-tools .op-status-ready,.shell .orders-module .op-order-head-tools .op-status-delivered{background:#e6f3ec;color:#246348}
+.shell .orders-module .op-order-head-tools .op-status-received{background:#fff3df;color:#865b1f}

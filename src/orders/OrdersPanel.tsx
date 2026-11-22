@@ -249,9 +249,9 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
         const hasDeliveryDetails=Boolean(deliveryDetails?.delivery_preferences||o.notes);
         const statusLabel=({received:'Recibido',accepted:'Aceptado',preparing:'En preparación',ready:'Listo',out_for_delivery:'En reparto',delivered:'Entregado',cancelled:'Cancelado',return_pending:'Regreso al local'} as Record<string,string>)[o.status]||o.status;
         return <Fragment key={o.id}>{orderFilter==='active'&&stage==='local'&&(i===0||(visibleOrders[i-1].status==='received'?'received':['accepted','preparing'].includes(visibleOrders[i-1].status)?'preparing':'ready')!==(o.status==='received'?'received':['accepted','preparing'].includes(o.status)?'preparing':'ready'))&&<h2 className="order-group-title">{o.status==='received'?'Nuevos':['accepted','preparing'].includes(o.status)?'En preparación':'Listos para llevar'}</h2>}<article className="op-order" key={o.id}>
-        <div className="op-orderhead"><strong>#{o.id.slice(0,8)} · {o.customer_name}</strong><span className={`op-status op-status-${o.status}`}>{statusLabel}</span></div>
+        <div className="op-orderhead"><strong>#{o.id.slice(0,8)} · {o.customer_name}</strong><div className="op-order-head-tools"><span className={`op-status op-status-${o.status}`}>{statusLabel}</span>{['received','accepted','preparing','ready'].includes(o.status)&&<details className="order-more-options"><summary aria-label="Más opciones del pedido" title="Más opciones">⋮</summary><div className="order-more-menu"><button type="button" disabled={busy} onClick={()=>{if(window.confirm('¿Cancelar este pedido? Se liberarán las reservas.'))void act(o.id,'cancel');}}>Cancelar pedido</button></div></details>}</div></div>
         <p className="op-order-contact">{o.customer_phone}{o.delivery_address?` · ${o.delivery_address}`:''}</p>
-        <details className="op-order-detail"><summary><span>Productos <small>{linesForOrder.length===1?'1 producto':`${linesForOrder.length} productos`}</small></span><span className="op-detail-hint">Ver detalle</span></summary><div className="op-order-items">
+        <details className="op-order-detail"><summary><span>Productos <small>{linesForOrder.length===1?'1 producto':`${linesForOrder.length} productos`}</small></span></summary><div className="op-order-items">
           {linesForOrder.length===0
             ? <p className="op-item-missing">No se encontró el detalle de este pedido. Verificá antes de prepararlo.</p>
             : linesForOrder.map(l=>{
@@ -269,7 +269,6 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
         {o.status==='received'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'accept')}>Aceptar pedido</button>}
         {o.status==='accepted'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'prepare')}>Continuar preparación</button>}
         {o.status==='preparing'&&<button className="op-primary" disabled={busy} onClick={()=>void act(o.id,'ready')}>Marcar listo</button>}
-        {['received','accepted','preparing','ready'].includes(o.status)&&<details className="order-more-options"><summary aria-label="Más opciones del pedido" title="Más opciones">⋮</summary><div className="order-more-menu"><button type="button" disabled={busy} onClick={()=>{if(window.confirm('¿Cancelar este pedido? Se liberarán las reservas.'))void act(o.id,'cancel');}}>Cancelar pedido</button></div></details>}
         {o.status==='delivered'&&<div className="op-payment-status"><span>Estado del pago</span><strong>{paymentLabel(o.id)}</strong>{pendingFor(o.id)&&!paymentFor(o.id)&&<span>Saldo por cobrar: {cash(Number(o.total_cents))}</span>}</div>}
         {staffRole==='admin'&&o.status==='delivered'&&paymentFor(o.id)?.method==='transfer_reported'&&!paymentFor(o.id)?.verified_at&&(
           issueFor(o.id)?.action==='reported'
