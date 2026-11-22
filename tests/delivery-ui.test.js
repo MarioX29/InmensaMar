@@ -7,7 +7,7 @@ const returns = readFileSync(new URL('../src/delivery/DeliveryReturnsPanel.tsx',
 const styles = readFileSync(new URL('../src/delivery/delivery.css', import.meta.url), 'utf8');
 
 test('active delivery routes render compact independent cards and expandable stop details', () => {
-  assert.match(panel, /className="delivery-route-grid"/);
+  assert.match(panel, /className=\{`delivery-route-grid\$\{activeRoutes\.length===1\?' is-single':''\}`\}/);
   assert.match(panel, /className="delivery-route-card"/);
   assert.match(panel, /Ver pedidos de esta salida/);
 });
@@ -42,4 +42,21 @@ test('collection statuses distinguish pending payments, transfer review and conf
 test('uncertain return submissions can be retried with the same persisted request after reload', () => {
   assert.match(returns, /if\(pending\)\{\s*\/\/ Retry the exact persisted request/);
   assert.match(returns, /pending\?\.orderId===orderId\|\|group\.every/);
+});
+
+
+test('a single active route uses the full available width with a horizontal summary', () => {
+  assert.match(panel, /activeRoutes\.length===1/);
+  assert.match(styles, /\.delivery-route-grid\.is-single\{grid-template-columns:minmax\(0,1fr\)\}/);
+  assert.match(styles, /\.delivery-route-grid\.is-single \.delivery-route-card\{grid-template-columns:/);
+});
+
+test('route progress label makes clear cancelled orders are excluded from the denominator', () => {
+  assert.match(panel, /Progreso de pedidos activos/);
+  assert.match(panel, /summary\.progressTotal===0\?'Sin pedidos activos':`\$\{summary\.delivered\} de \$\{summary\.progressTotal\}`/);
+});
+
+test('a single pending collection uses the full available width', () => {
+  assert.match(panel, /delivery-collection-grid\$\{latePending\.length\+transferReview\.length===1\?' is-single':''\}/);
+  assert.match(styles, /\.delivery-collection-grid\.is-single\{grid-template-columns:minmax\(0,1fr\)\}/);
 });

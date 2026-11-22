@@ -108,6 +108,35 @@ export function OrdersPanel({staffRole='counter'}:{staffRole?:'admin'|'counter'|
       window.clearInterval(timer);
     };
   },[load]);
+  useEffect(()=>{
+    const menuSelector='details.order-more-options, details.order-line-more';
+    const closeOtherMenus=(event:PointerEvent)=>{
+      const target=event.target;
+      const clickedMenu=target instanceof Element?target.closest<HTMLDetailsElement>(menuSelector):null;
+      document.querySelectorAll<HTMLDetailsElement>(`${menuSelector}[open]`).forEach(menu=>{
+        if(menu!==clickedMenu)menu.open=false;
+      });
+    };
+    const closeMenusOnEscape=(event:KeyboardEvent)=>{
+      if(event.key!=='Escape')return;
+      const openMenus=[...document.querySelectorAll<HTMLDetailsElement>(`${menuSelector}[open]`)];
+      openMenus.forEach(menu=>{menu.open=false;});
+      openMenus[0]?.querySelector<HTMLElement>('summary')?.focus();
+    };
+    const closeSelectedMenu=(event:MouseEvent)=>{
+      const target=event.target;
+      const action=target instanceof Element?target.closest('details.order-more-options button, details.order-line-more button'):null;
+      action?.closest<HTMLDetailsElement>('details')?.removeAttribute('open');
+    };
+    document.addEventListener('pointerdown',closeOtherMenus);
+    document.addEventListener('keydown',closeMenusOnEscape);
+    document.addEventListener('click',closeSelectedMenu);
+    return()=>{
+      document.removeEventListener('pointerdown',closeOtherMenus);
+      document.removeEventListener('keydown',closeMenusOnEscape);
+      document.removeEventListener('click',closeSelectedMenu);
+    };
+  },[]);
   function adjust(p:Product,delta:number){
     setItems(old=>{
       const current=old.find(x=>x.variant_id===p.id)?.quantity||0;

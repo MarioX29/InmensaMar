@@ -36,3 +36,13 @@ test('new-order product removal uses a discreet accessible X control', () => {
   assert.match(panel, /className="op-remove-line" aria-label=\{`Eliminar \$\{p\.name\} del pedido`\}/);
   assert.doesNotMatch(panel, /className="op-outline" disabled=\{busy\} onClick=\{\(\)=>setItems\(old=>old\.filter\(item=>item\.variant_id!==p\.id\)\)\}>Quitar/);
 });
+
+
+test('three-dot order menus close on outside clicks and Escape, with only one open', () => {
+  assert.match(panel, /document\.addEventListener\('pointerdown',closeOtherMenus\)/);
+  assert.match(panel, /document\.addEventListener\('keydown',closeMenusOnEscape\)/);
+  assert.match(panel, /event\.key!=='Escape'/);
+  assert.match(panel, /if\(menu!==clickedMenu\)menu\.open=false/);
+  assert.match(panel, /document\.addEventListener\('click',closeSelectedMenu\)/);
+  assert.match(panel, /removeAttribute\('open'\)/);
+});

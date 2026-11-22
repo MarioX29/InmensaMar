@@ -158,15 +158,16 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    localStorage.removeItem('im-failure-pending');setFailurePending(null);setFailureChoice(null);setNotice(p.action==='retry'?'Intento registrado. Podés volver a entregar más tarde.':'Regreso solicitado. Mostrador debe confirmar la mercadería.');await load();
   }catch(e){setError(errorText(e)+' No iniciés otra operación.');}finally{setBusy(false);}
  }
+ const activeRoutes = routes.filter(r => r.status !== 'closed' && (r.dispatched_at || assignments.some(a => a.route_id === r.id && orderStates[a.order_id] !== 'cancelled')));
  return <section className="delivery-module">
   <details className="feature-note"><summary>Cómo registrar salidas y cobros</summary><p>Confirmar salida registra la salida física del producto. Al entregar, registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada requiere verificación.</p></details>
   {deliveryInfo.failed&&<p role="alert" className="delivery-warning">No pudimos cargar ubicación y preferencias de pago. <button type="button" onClick={deliveryInfo.retry}>Reintentar datos de entrega</button></p>}{error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>Salidas en curso</button><button type="button" className={view==='returns'?'selected':''} aria-pressed={view==='returns'} onClick={()=>setView('returns')}>Devoluciones</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
   {staffRole!=='driver'&&view==='active'&&<section className="delivery-workspace">
-   <div className="delivery-section-heading"><h2>Salidas en curso</h2><span>{routes.filter(r=>r.status!=='closed'&&(r.dispatched_at||assignments.some(a=>a.route_id===r.id&&orderStates[a.order_id]!=='cancelled'))).length} activas</span></div>
-   {!routes.some(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled')))&&<div className="delivery-empty">No hay salidas en curso.</div>}
-   <div className="delivery-route-grid">{routes.filter(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled'))).map(r=>{
+   <div className="delivery-section-heading"><h2>Salidas en curso</h2><span>{activeRoutes.length} activas</span></div>
+   {activeRoutes.length===0&&<div className="delivery-empty">No hay salidas en curso.</div>}
+   <div className={`delivery-route-grid${activeRoutes.length===1?' is-single':''}`}>{activeRoutes.map(r=>{
     const assigned=assignments.filter(a=>a.route_id===r.id).sort((a,b)=>a.stop_order-b.stop_order);
     const states=assigned.map(a=>orderStates[a.order_id]||'ready');
     const summary=summarizeDeliveryRoute(states);
@@ -174,7 +175,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
     return <article className="delivery-route-card" key={r.id}>
      <div className="delivery-route-card-head"><div><strong>{r.label}</strong><small>{routeDriver}</small></div><span className={`delivery-route-state ${r.dispatched_at?'is-dispatched':'is-planned'}`}>{r.dispatched_at?'En reparto':'Preparada'}</span></div>
      <div className="delivery-route-metrics"><strong>{summary.total} pedidos</strong><span>{summary.delivered} entregados</span>{summary.inProgress>0&&<span>{summary.inProgress} en curso</span>}{summary.returnPending>0&&<span>{summary.returnPending} de regreso</span>}{summary.ready>0&&<span>{summary.ready} listos</span>}{summary.cancelled>0&&<span>{summary.cancelled} cancelados</span>}</div>
-     <div className="delivery-route-progress"><div className="delivery-route-progress-label"><span>Entregas completadas</span><strong>{summary.delivered}/{summary.progressTotal}</strong></div><div className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></div></div>
+     <div className="delivery-route-progress"><div className="delivery-route-progress-label"><span>Progreso de pedidos activos</span><strong>{summary.progressTotal===0?'Sin pedidos activos':`${summary.delivered} de ${summary.progressTotal}`}</strong></div><div className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></div></div>
      <details className="delivery-route-details"><summary>Ver pedidos de esta salida</summary><div className="delivery-route-stops">{assigned.map((a,i)=><div className="delivery-stop-card" key={a.order_id}><span className="delivery-stop-number">{i+1}</span><div><strong>{orders.find(o=>o.id===a.order_id)?.customer_name||`Pedido #${a.order_id.slice(0,8)}`}</strong><small>{orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='out_for_delivery'?'En reparto':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]==='return_pending'?'Regreso al local':'Listo'}</small></div></div>)}</div></details>
      {!r.dispatched_at&&r.status==='planning'&&assigned.length>0&&<button className="delivery-primary delivery-route-dispatch" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:r.id})}>Confirmar despacho</button>}
     </article>;
@@ -279,7 +280,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    const cashReceived=collectionItems.filter(x=>x.events.some(e=>e.event_kind==='payment'&&e.method==='cash'));
    if(!collectionItems.length)return null;
    return <section className="delivery-collections"><div className="delivery-section-heading"><h2>Cobros de entregas</h2><span>{latePending.length+transferReview.length} por atender</span></div>
-    <div className="delivery-collection-grid">
+    <div className={`delivery-collection-grid${latePending.length+transferReview.length===1?' is-single':''}`}>
      {latePending.map(({order})=><article className="delivery-collection-card" key={order.id}><div className="delivery-collection-copy"><strong>#{order.id.slice(0,8)} · {order.customer_name}</strong><span className="delivery-payment-state is-pending">Pago pendiente</span></div><strong>{money(order.total_cents)}</strong><button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:order.id});}}>Registrar cobro</button></article>)}
      {transferReview.map(({order})=><article className="delivery-collection-card" key={order.id}><div className="delivery-collection-copy"><strong>#{order.id.slice(0,8)} · {order.customer_name}</strong><span className="delivery-payment-state is-review">Transferencia por verificar</span></div><strong>{money(order.total_cents)}</strong></article>)}
     </div>
