@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import './delivery.css';
 import {OrderDeliveryInfo,useDeliveryPreferences} from '../orders/OrderDeliveryInfo';
 import { DeliveryReturnsPanel } from './DeliveryReturnsPanel';
+import { getDeliveryPaymentLabel, summarizeDeliveryRoute } from './deliveryPresentation.js';
 type Driver={user_id:string;display_name:string};
 type Route={id:string;label:string;driver_id:string;created_at:string;dispatched_at:string|null;status:string};
 type Order={id:string;customer_name:string;total_cents:number;status?:string};
@@ -157,22 +158,27 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    localStorage.removeItem('im-failure-pending');setFailurePending(null);setFailureChoice(null);setNotice(p.action==='retry'?'Intento registrado. Podés volver a entregar más tarde.':'Regreso solicitado. Mostrador debe confirmar la mercadería.');await load();
   }catch(e){setError(errorText(e)+' No iniciés otra operación.');}finally{setBusy(false);}
  }
- const hasPayment=(orderId:string)=>paymentEvents.some(e=>e.order_id===orderId&&e.event_kind==='payment');
- const pendingLate=orders.filter(o=>o.status==='delivered'&&!hasPayment(o.id)&&paymentEvents.some(e=>e.order_id===o.id&&e.event_kind==='pending'));
  return <section className="delivery-module">
   <details className="feature-note"><summary>Cómo registrar salidas y cobros</summary><p>Confirmar salida registra la salida física del producto. Al entregar, registrá efectivo, transferencia reportada o pago pendiente. Una transferencia reportada requiere verificación.</p></details>
   {deliveryInfo.failed&&<p role="alert" className="delivery-warning">No pudimos cargar ubicación y preferencias de pago. <button type="button" onClick={deliveryInfo.retry}>Reintentar datos de entrega</button></p>}{error&&<div className="delivery-error" role="alert"><span>{error}</span><button onClick={()=>setError('')}>Cerrar</button></div>}
   {notice&&<div className="delivery-success" role="status"><span>{notice}</span><button onClick={()=>setNotice('')}>Cerrar</button></div>}
   {staffRole!=='driver'&&<div className="delivery-tabs" role="group" aria-label="Vistas de reparto"><button type="button" className={view==='active'?'selected':''} aria-pressed={view==='active'} onClick={()=>setView('active')}>Salidas en curso</button><button type="button" className={view==='returns'?'selected':''} aria-pressed={view==='returns'} onClick={()=>setView('returns')}>Devoluciones</button><button type="button" className={view==='history'?'selected':''} aria-pressed={view==='history'} onClick={()=>setView('history')}>Historial</button></div>}
-  {staffRole!=='driver'&&view==='active'&&<section className="delivery-card"><h2>Salidas en curso</h2>
-   {!routes.some(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled')))&&<p>No hay salidas en curso.</p>}
-   {routes.filter(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled'))).map(r=>{
+  {staffRole!=='driver'&&view==='active'&&<section className="delivery-workspace">
+   <div className="delivery-section-heading"><h2>Salidas en curso</h2><span>{routes.filter(r=>r.status!=='closed'&&(r.dispatched_at||assignments.some(a=>a.route_id===r.id&&orderStates[a.order_id]!=='cancelled'))).length} activas</span></div>
+   {!routes.some(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled')))&&<div className="delivery-empty">No hay salidas en curso.</div>}
+   <div className="delivery-route-grid">{routes.filter(r=>r.status!=='closed' && (r.dispatched_at || assignments.some(a=>a.route_id===r.id && orderStates[a.order_id]!=='cancelled'))).map(r=>{
     const assigned=assignments.filter(a=>a.route_id===r.id).sort((a,b)=>a.stop_order-b.stop_order);
-    return <div className="delivery-route" key={r.id}><strong>{r.label}</strong><small>{drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor'} · {assigned.length} pedidos · {r.dispatched_at?'En reparto':'Preparada'}</small>
-     {assigned.map((a,i)=><div className="delivery-stop" key={a.order_id}><span>{i+1}. {orders.find(o=>o.id===a.order_id)?.customer_name||`Pedido #${a.order_id.slice(0,8)}`} · {orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='out_for_delivery'?'En reparto':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]==='return_pending'?'Regreso al local':'Listo'}</span></div>)}
-     {!r.dispatched_at&&r.status==='planning'&&assigned.length>0&&<button className="delivery-primary" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:r.id})}>Confirmar despacho anterior</button>}
-    </div>;
-   })}
+    const states=assigned.map(a=>orderStates[a.order_id]||'ready');
+    const summary=summarizeDeliveryRoute(states);
+    const routeDriver=drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor sin nombre';
+    return <article className="delivery-route-card" key={r.id}>
+     <div className="delivery-route-card-head"><div><strong>{r.label}</strong><small>{routeDriver}</small></div><span className={`delivery-route-state ${r.dispatched_at?'is-dispatched':'is-planned'}`}>{r.dispatched_at?'En reparto':'Preparada'}</span></div>
+     <div className="delivery-route-metrics"><strong>{summary.total} pedidos</strong><span>{summary.delivered} entregados</span>{summary.inProgress>0&&<span>{summary.inProgress} en curso</span>}{summary.returnPending>0&&<span>{summary.returnPending} de regreso</span>}{summary.ready>0&&<span>{summary.ready} listos</span>}{summary.cancelled>0&&<span>{summary.cancelled} cancelados</span>}</div>
+     <div className="delivery-route-progress"><div className="delivery-route-progress-label"><span>Entregas completadas</span><strong>{summary.delivered}/{summary.progressTotal}</strong></div><div className="delivery-route-progress-track"><span style={{width:`${summary.progressPercent}%`}}/></div></div>
+     <details className="delivery-route-details"><summary>Ver pedidos de esta salida</summary><div className="delivery-route-stops">{assigned.map((a,i)=><div className="delivery-stop-card" key={a.order_id}><span className="delivery-stop-number">{i+1}</span><div><strong>{orders.find(o=>o.id===a.order_id)?.customer_name||`Pedido #${a.order_id.slice(0,8)}`}</strong><small>{orderStates[a.order_id]==='delivered'?'Entregado':orderStates[a.order_id]==='out_for_delivery'?'En reparto':orderStates[a.order_id]==='cancelled'?'Cancelado':orderStates[a.order_id]==='return_pending'?'Regreso al local':'Listo'}</small></div></div>)}</div></details>
+     {!r.dispatched_at&&r.status==='planning'&&assigned.length>0&&<button className="delivery-primary delivery-route-dispatch" disabled={busy} onClick={()=>setConfirm({kind:'outing',id:r.id})}>Confirmar despacho</button>}
+    </article>;
+   })}</div>
   </section>}
   {staffRole!=='driver'&&view==='history'&&<section className="delivery-card"><div className="delivery-card-head"><h2>Historial de reparto</h2><button onClick={()=>void load()} disabled={busy}>Actualizar</button></div>
    <p className="delivery-subtitle">Consultá salidas cerradas por fecha y repartidor. Se muestran hasta las 100 salidas más recientes cargadas; los filtros no son un reporte completo de períodos anteriores.</p>
@@ -204,7 +210,7 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
          const label=states.length>0&&states.every(x=>x==='delivered')?'Entregada':states.length>0&&states.every(x=>x==='cancelled')?'Cancelada':'Cerrada';
          const isOpen=expandedRoute===r.id;
          return <Fragment key={r.id}>
-           <tr className={isOpen?'delivery-history-open':''}>
+           <tr className={`delivery-history-data-row ${isOpen?'delivery-history-open':''}`}>
             <td><strong>Salida #{r.id.slice(0,8)}</strong><small>{formatLocalDateTime(r.created_at)}</small></td>
             <td>{drivers.find(d=>d.user_id===r.driver_id)?.display_name||'Repartidor'}</td>
             <td>{assigned.length}</td>
@@ -264,7 +270,23 @@ export function DeliveryPanel({staffRole='admin'}:{staffRole?:'admin'|'counter'|
    <div className="delivery-summary"><span>Transferencias reportadas</span><strong>{money(mine.reduce((n,o)=>n+paymentEvents.filter(e=>e.order_id===o.order_id&&e.event_kind==='payment'&&e.method==='transfer_reported').reduce((a,e)=>a+e.amount_cents,0),0))}</strong></div>
    <p className="delivery-subtitle">Este resumen no sustituye la liquidación de efectivo y no incluye entregas fuera de la lista actual.</p>
   </section></details>}
-  {staffRole!=='driver'&&view==='active'&&pendingLate.length>0&&<section className="delivery-card"><h2>Cobros pendientes después de la entrega</h2><p className="delivery-subtitle">Solo pedidos entregados con un pendiente registrado.</p>{pendingLate.map(o=><div className="delivery-route" key={o.id}><strong>Pedido #{o.id.slice(0,8)} · {o.customer_name}</strong><small>{money(o.total_cents)} pendiente</small><button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:o.id});}}>Registrar cobro posterior</button></div>)}</section>}
+  {staffRole!=='driver'&&view==='active'&&(()=>{
+   const deliveredOrders=orders.filter(o=>o.status==='delivered').map(o=>({order:o,events:paymentEvents.filter(e=>e.order_id===o.id)})).filter(x=>x.events.length>0);
+   const collectionItems=deliveredOrders.map(({order,events})=>({order,label:getDeliveryPaymentLabel(events),hasPending:events.some(e=>e.event_kind==='pending'),events}));
+   const latePending=collectionItems.filter(x=>x.hasPending&&!x.events.some(e=>e.event_kind==='payment'));
+   const transferReview=collectionItems.filter(x=>x.events.some(e=>e.event_kind==='payment'&&e.method==='transfer_reported'&&!e.verified_at));
+   const verifiedTransfers=collectionItems.filter(x=>x.events.some(e=>e.event_kind==='payment'&&e.method==='transfer_reported'&&!!e.verified_at));
+   const cashReceived=collectionItems.filter(x=>x.events.some(e=>e.event_kind==='payment'&&e.method==='cash'));
+   if(!collectionItems.length)return null;
+   return <section className="delivery-collections"><div className="delivery-section-heading"><h2>Cobros de entregas</h2><span>{latePending.length+transferReview.length} por atender</span></div>
+    <div className="delivery-collection-grid">
+     {latePending.map(({order})=><article className="delivery-collection-card" key={order.id}><div className="delivery-collection-copy"><strong>#{order.id.slice(0,8)} · {order.customer_name}</strong><span className="delivery-payment-state is-pending">Pago pendiente</span></div><strong>{money(order.total_cents)}</strong><button className="delivery-primary" disabled={busy} onClick={()=>{setPaymentMethod('cash');setTendered('');setConfirm({kind:'delivery',id:order.id});}}>Registrar cobro</button></article>)}
+     {transferReview.map(({order})=><article className="delivery-collection-card" key={order.id}><div className="delivery-collection-copy"><strong>#{order.id.slice(0,8)} · {order.customer_name}</strong><span className="delivery-payment-state is-review">Transferencia por verificar</span></div><strong>{money(order.total_cents)}</strong></article>)}
+    </div>
+    <details className="delivery-collection-summary"><summary>Ver cobros registrados ({cashReceived.length+verifiedTransfers.length})</summary><div>{cashReceived.map(({order})=><div key={order.id}><span>{order.customer_name}</span><span className="delivery-payment-state is-paid">Efectivo recibido</span><strong>{money(order.total_cents)}</strong></div>)}{verifiedTransfers.map(({order})=><div key={order.id}><span>{order.customer_name}</span><span className="delivery-payment-state is-paid">Transferencia verificada</span><strong>{money(order.total_cents)}</strong></div>)}</div></details>
+    <p className="delivery-subtitle">Los cobros parciales no están habilitados en el sistema actual. Las transferencias reportadas se verifican desde Finanzas.</p>
+   </section>;
+  })()}
   {confirm&&<div className="delivery-confirm-backdrop" role="presentation">
    <div className="delivery-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delivery-confirm-title">
     <h3 id="delivery-confirm-title">{confirm.kind==='delivery'?(orderStates[confirm.id]==='delivered'?'¿Registrar cobro pendiente?':'¿Entregar y registrar cobro?'):'¿Confirmar salida?'}</h3>

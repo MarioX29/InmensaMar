@@ -76,3 +76,90 @@
 /* Driver self-dispatch QA */
 .driver-links,.driver-order-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
 .driver-links a,.driver-order-actions button{min-height:40px;padding:8px 12px;border:1px solid #85c7c1;border-radius:9px;background:#f7f5ef;color:#142f43;font:inherit}
+
+/* Reparto: resumen de rutas compacto, con jerarquía clara y adaptable. */
+.delivery-tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #d5e0e0;padding-bottom:6px}
+.delivery-tabs button{flex:0 0 auto;min-height:42px;padding:8px 14px;border:0;border-bottom:2px solid transparent;border-radius:6px 6px 0 0;background:transparent;color:#34515a;font-weight:600}
+.delivery-tabs button.selected{background:#eaf3f2;color:#145f68;border-bottom-color:#247b87}
+.delivery-workspace,.delivery-collections,.delivery-returns-workspace{display:grid;gap:12px;min-width:0}
+.delivery-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.delivery-section-heading h2{margin:0;font-size:18px}
+.delivery-section-heading>span{font-size:12px;color:#62777c}
+.delivery-empty{padding:18px;border:1px dashed #c8d7d8;border-radius:8px;background:#fff;color:#61757a}
+.delivery-route-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.delivery-route-card{min-width:0;border:1px solid #d6e1e1;border-radius:9px;background:#fff;padding:13px;display:grid;gap:11px;align-content:start}
+.delivery-route-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0}
+.delivery-route-card-head>div{display:grid;gap:4px;min-width:0}
+.delivery-route-card-head>div>strong{overflow-wrap:anywhere}
+.delivery-route-card-head small{font-size:12px;color:#64777d}
+.delivery-route-state,.delivery-payment-state{display:inline-flex;align-items:center;white-space:nowrap;border-radius:5px;padding:4px 7px;font-size:11px;font-weight:600;background:#edf4f3;color:#23626a}
+.delivery-route-state.is-planned{background:#f1f3f4;color:#53666d}
+.delivery-route-metrics{display:flex;flex-wrap:wrap;gap:5px}
+.delivery-route-metrics strong,.delivery-route-metrics span{font-size:11px;border-radius:5px;padding:4px 6px;background:#f1f5f5;color:#425d62}
+.delivery-route-progress{display:grid;gap:5px}
+.delivery-route-progress-label{display:flex;justify-content:space-between;gap:8px;color:#61757a;font-size:11px}
+.delivery-route-progress-label strong{color:#1c3c46}
+.delivery-route-progress-track{height:6px;border-radius:9px;background:#e8eeee;overflow:hidden}
+.delivery-route-progress-track span{display:block;height:100%;background:#247b87;border-radius:9px;min-width:0}
+.delivery-route-details{border-top:1px solid #e4ebeb;padding-top:8px}
+.delivery-route-details>summary{cursor:pointer;list-style:none;color:#176b76;font-size:12px;font-weight:600;min-height:30px;display:flex;align-items:center;justify-content:space-between}
+.delivery-route-details>summary::-webkit-details-marker{display:none}
+.delivery-route-details>summary::after{content:'+';font-size:18px;font-weight:400}
+.delivery-route-details[open]>summary::after{content:'−'}
+.delivery-route-stops{display:grid;gap:7px;padding-top:7px}
+.delivery-stop-card{display:flex;align-items:center;gap:8px;min-width:0;padding:7px;background:#f7f9f9;border-radius:6px}
+.delivery-stop-number{flex:0 0 22px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#e5efee;color:#24636b;font-size:11px;font-weight:700}
+.delivery-stop-card>div{display:grid;gap:2px;min-width:0}
+.delivery-stop-card strong{font-size:12px;overflow-wrap:anywhere}
+.delivery-stop-card small{font-size:11px;color:#62777c}
+.delivery-route-dispatch{min-height:40px;font-size:13px}
+.delivery-collections{border:1px solid #dce5e5;border-radius:9px;background:#fff;padding:14px}
+.delivery-collection-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.delivery-collection-card{border:1px solid #e1e9e9;border-radius:7px;padding:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center;min-width:0}
+.delivery-collection-copy{display:grid;gap:5px;min-width:0}
+.delivery-collection-copy>strong{font-size:13px;overflow-wrap:anywhere}
+.delivery-payment-state.is-pending{background:#fff4e4;color:#875a16;justify-self:start}
+.delivery-payment-state.is-review{background:#fef4e5;color:#835c1d;justify-self:start}
+.delivery-payment-state.is-paid{background:#eaf5ef;color:#246b4c}
+.delivery-collection-card>.delivery-primary{grid-column:1/-1;min-height:38px;font-size:12px}
+.delivery-collection-summary{border-top:1px solid #e6eded;padding-top:9px}
+.delivery-collection-summary>summary{font-size:12px;color:#176b76;font-weight:600;cursor:pointer}
+.delivery-collection-summary>div{display:grid;gap:6px;padding-top:9px}
+.delivery-collection-summary>div>div{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;font-size:12px;padding:7px 0;border-bottom:1px solid #edf0f0}
+.delivery-collection-summary>div>div>strong{white-space:nowrap}
+.delivery-return-message{padding:9px 11px;border-radius:7px;background:#edf5f3;color:#245a51;font-size:13px}
+.delivery-return-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.delivery-return-card{min-width:0;border:1px solid #d8e3e3;border-radius:9px;background:#fff;padding:13px;display:grid;gap:10px}
+.delivery-return-card-head{display:flex;justify-content:space-between;gap:8px}
+.delivery-return-card-head>div{display:grid;gap:4px}
+.delivery-return-card-head small{font-size:11px;color:#667b80}
+.delivery-return-product{display:grid;grid-template-columns:minmax(0,1fr) minmax(125px,.8fr);gap:8px;align-items:end;border-top:1px solid #e8eeee;padding-top:9px}
+.delivery-return-product-copy{display:grid;gap:3px;align-self:center;min-width:0}
+.delivery-return-product-copy strong{font-size:13px;overflow-wrap:anywhere}
+.delivery-return-product-copy small{font-size:11px;color:#667b80}
+.delivery-return-quantity{display:grid;gap:4px;font-size:11px;color:#4d656b}
+.delivery-return-quantity input{width:100%;min-height:39px;border:1px solid #b8cbce;border-radius:6px;padding:7px;font:inherit;color:#183a43}
+.delivery-return-loss{grid-column:1/-1;display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#6c7779}
+.delivery-return-card>.delivery-primary{min-height:42px;font-size:13px}
+.delivery-return-card>small{font-size:11px;color:#8a5518}
+.delivery-returns-workspace>.delivery-section-heading>button{min-height:36px;border:1px solid #bdd0d1;background:#fff;border-radius:6px;padding:6px 10px;color:#24505a}
+@media(max-width:1000px){.delivery-route-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.delivery-route-grid,.delivery-return-grid{grid-template-columns:1fr}.delivery-collection-grid{grid-template-columns:1fr}.delivery-route-card,.delivery-return-card{padding:12px}.delivery-collection-summary>div>div{grid-template-columns:minmax(0,1fr) auto}.delivery-collection-summary>div>div>strong{grid-column:1/-1}}
+
+/* Historial: tabla legible en escritorio y tarjetas compactas en móvil. */
+@media(max-width:700px){
+ .delivery-history-table-wrap{overflow:visible}
+ .delivery-history-table,.delivery-history-table tbody{display:block;width:100%}
+ .delivery-history-table thead{display:none}
+ .delivery-history-table tr.delivery-history-data-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;margin:0 0 9px;padding:11px;border:1px solid #d9e4e4;border-radius:8px;background:#fff}
+ .delivery-history-table tr.delivery-history-data-row td{display:block;width:auto;padding:0;border:0;min-width:0}
+ .delivery-history-table tr.delivery-history-data-row td:first-child{grid-column:1/-1}
+ .delivery-history-table tr.delivery-history-data-row td:nth-child(2){grid-column:1;grid-row:2;font-size:12px;color:#596f75}
+ .delivery-history-table tr.delivery-history-data-row td:nth-child(3){grid-column:2;grid-row:2;text-align:right;font-size:12px;color:#596f75}
+ .delivery-history-table tr.delivery-history-data-row td:nth-child(3)::before{content:'Pedidos: ';font-weight:600}
+ .delivery-history-table tr.delivery-history-data-row td:nth-child(4){grid-column:1;grid-row:3}
+ .delivery-history-table tr.delivery-history-data-row td:nth-child(5){grid-column:2;grid-row:3;text-align:right;padding:0}
+ .delivery-history-table tr.delivery-history-detail-row{display:block;margin:-5px 0 9px;padding:0;border:0}
+ .delivery-history-detail-row>td{display:block;width:100%;padding:0!important}
+ .delivery-history-full-detail{padding:10px}
+}
