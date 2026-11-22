@@ -289,14 +289,16 @@ function App({staffRole='admin',userId=''}:{staffRole?:'admin'|'counter'|'driver
     <div className="cart-title"><div><small>EN MOSTRADOR</small><strong>Venta actual</strong></div><button className="mobile-only icon-btn" aria-label="Cerrar carrito" onClick={()=>setCartOpen(false)}><X size={19}/></button></div>
     {cart.length?cart.map(({line,product})=>{
       return <div className="cart-line" key={line.id}>
-        <div><strong>{product.name}</strong><small>{money(product.priceCents)} / {units[product.unit]}</small></div>
+        <div className="cart-line-head">
+          <div className="cart-product-meta"><strong>{product.name}</strong><small>{money(product.priceCents)} / {units[product.unit]}</small></div>
+          <button className="remove-line" type="button" disabled={busy||!!pending} onClick={()=>removeLine(product.id)} aria-label={`Eliminar ${product.name}`} title="Eliminar producto"><X size={17} aria-hidden="true"/></button>
+        </div>
         {line.qty>product.stock&&<small className="cart-stock-warning">Disponible: {product.stock} {units[product.unit]}. Reducí o quitá este producto.</small>}
         <div className="cart-bottom">
           <div className="quantity-control">
-            <QuantityInput unit={product.unit} value={line.qty} disabled={busy||!!pending} onCommit={quantity=>commitQuantity(product,quantity)} />
+            <QuantityInput unit={product.unit} value={line.qty} max={Math.max(product.stock,line.qty)} disabled={busy||!!pending} onCommit={quantity=>commitQuantity(product,quantity)} />
           </div>
           <b>{money(Math.round(line.qty*product.priceCents))}</b>
-          <button className="remove-line" type="button" disabled={busy||!!pending} onClick={()=>removeLine(product.id)} aria-label={`Quitar ${product.name}`}>Quitar</button>
         </div>
       </div>;
     }):<p className="empty">Elegí un producto para comenzar la venta.</p>}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { InventoryUnit } from '../lib/units';
 import { unitLabels } from '../lib/units';
 import { poundsAndOuncesToQuantity, quantityToPoundsAndOunces } from '../lib/weight.js';
@@ -25,9 +25,15 @@ export function QuantityInput({ unit, value, onCommit, disabled = false, label =
   const [quantityDraft, setQuantityDraft] = useState(String(value));
   const [quantityDirty, setQuantityDirty] = useState(false);
   const [error, setError] = useState('');
+  const localWeightCommit = useRef<number | null>(null);
 
   useEffect(() => {
     if (unit === 'lb') {
+      // Keep the user's in-progress text when the parent echoes our own live update.
+      if (localWeightCommit.current !== null && Math.abs(value - localWeightCommit.current) < 0.0000001) {
+        localWeightCommit.current = null;
+        return;
+      }
       const next = quantityToPoundsAndOunces(value);
       setPounds(String(next.pounds));
       setOunces(String(next.ounces));
@@ -43,28 +49,37 @@ export function QuantityInput({ unit, value, onCommit, disabled = false, label =
     const oz = Number(ounces.replace(',', '.'));
     if (!pounds.trim() || !ounces.trim() || !Number.isSafeInteger(lb) || lb < 0 || !Number.isFinite(oz) || oz < 0) return null;
     const result = poundsAndOuncesToQuantity(lb, oz);
-    return Number.isFinite(result) && result <= max ? result : null;
+    return Number.isFinite(result) && result > 0 && result <= max ? result : null;
   }, [pounds, ounces, max]);
 
-  function commitPounds() {
-    const lb = parseNonNegativeInteger(pounds);
-    const oz = Number(ounces.replace(',', '.'));
-    if (lb === null || !ounces.trim() || !Number.isFinite(oz) || oz < 0 || Math.round(oz * 10000) !== oz * 10000) {
-      setError('Ingresá libras enteras y onzas válidas.');
-      return;
+  function commitPounds(nextPounds = pounds, nextOunces = ounces) {
+    const lb = parseNonNegativeInteger(nextPounds);
+    const oz = Number(nextOunces.replace(',', '.'));
+    if (lb === null || !nextOunces.trim() || !Number.isFinite(oz) || oz < 0 || Math.round(oz * 10000) !== oz * 10000) {
+      return false;
     }
     const result = poundsAndOuncesToQuantity(lb, oz);
-    if (result <= 0 || result > max) {
-      setError('La cantidad debe ser mayor que cero y no superar el máximo permitido.');
+    if (result <= 0 || result > max) return false;
+    if (Math.abs(result - value) >= 0.0000001) {
+      localWeightCommit.current = result;
+      onCommit(result);
+    }
+    return true;
+  }
+
+  function normalizePoundsDraft() {
+    if (!commitPounds()) {
+      const stored = quantityToPoundsAndOunces(value);
+      setPounds(String(stored.pounds));
+      setOunces(String(stored.ounces));
+      setError('Revisá la cantidad de libras y onzas.');
       return;
     }
-    if (result === value) {
-      const normalized = quantityToPoundsAndOunces(result);
-      setPounds(String(normalized.pounds));
-      setOunces(String(normalized.ounces));
-    }
+    const total = poundsAndOuncesToQuantity(Number(pounds), Number(ounces.replace(',', '.')));
+    const normalized = quantityToPoundsAndOunces(total);
+    setPounds(String(normalized.pounds));
+    setOunces(String(normalized.ounces));
     setError('');
-    onCommit(result);
   }
 
   function commitOtherUnit() {
@@ -81,20 +96,17 @@ export function QuantityInput({ unit, value, onCommit, disabled = false, label =
   }
 
   if (unit === 'lb') {
-    const currentParts = quantityToPoundsAndOunces(value);
-    const draftMatchesCurrent = pounds === String(currentParts.pounds) && Number(ounces.replace(',', '.')) === currentParts.ounces;
     const totalOunces = poundsPreview === null ? null : Math.round(poundsPreview * 16 * 10000) / 10000;
     const normalizedPounds = totalOunces === null ? 0 : Math.floor(totalOunces / 16);
     const normalizedOunces = totalOunces === null ? 0 : Math.round((totalOunces - normalizedPounds * 16) * 10000) / 10000;
     const decimalPounds = poundsPreview === null ? '' : poundsPreview.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
     return <div className="im-quantity-input" data-unit="lb">
       <div className="im-quantity-parts">
-        <label><span>Libras</span><input type="number" inputMode="numeric" min="0" step="1" value={pounds} disabled={disabled} onChange={event => { setPounds(event.target.value); setError(''); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitPounds(); } }}/></label>
-        <label><span>Onzas</span><input type="number" inputMode="decimal" min="0" step="0.01" value={ounces} disabled={disabled} onChange={event => { setOunces(event.target.value); setError(''); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitPounds(); } }}/></label>
+        <label><span>Libras</span><input type="number" inputMode="numeric" min="0" step="1" value={pounds} disabled={disabled} onChange={event => { const next = event.target.value; setPounds(next); setError(''); commitPounds(next, ounces); }} onBlur={normalizePoundsDraft} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); normalizePoundsDraft(); } }}/></label>
+        <label><span>Onzas</span><input type="number" inputMode="decimal" min="0" step="0.01" value={ounces} disabled={disabled} onChange={event => { const next = event.target.value; setOunces(next); setError(''); commitPounds(pounds, next); }} onBlur={normalizePoundsDraft} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); normalizePoundsDraft(); } }}/></label>
       </div>
-      <div className="im-quantity-footer">
-        <small>{totalOunces === null ? 'Revisá la cantidad' : `Equivale a ${normalizedPounds} lb${normalizedOunces ? ` + ${normalizedOunces} oz` : ''} · ${decimalPounds} lb`}</small>
-        <button type="button" className="im-quantity-apply" disabled={disabled || poundsPreview === null || (poundsPreview === value && draftMatchesCurrent)} onClick={commitPounds}>Aplicar</button>
+      <div className="im-quantity-footer" aria-live="polite">
+        <small>{totalOunces === null ? 'Completá libras y onzas' : normalizedOunces ? `${normalizedPounds} lb + ${normalizedOunces} oz · ${decimalPounds} lb` : normalizedPounds ? `${normalizedPounds} lb` : `${normalizedOunces} oz · ${decimalPounds} lb`}</small>
       </div>
       {error && <small className="im-quantity-error" role="alert">{error}</small>}
     </div>;

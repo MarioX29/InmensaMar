@@ -32,3 +32,10 @@ body{margin:0}button,input,select,textarea{font-family:inherit}button,a,input,se
 }
 @media(max-width:390px){.shell .top{padding:0 13px;gap:8px}.shell .brand{gap:8px}.shell .mark{width:37px;height:37px}.shell .brand strong{font-size:18px}.shell .top-actions{gap:7px}.shell .demo{font-size:9px;padding:4px}.shell .storefront-link{max-width:65px;font-size:11px}.shell .main{padding-left:11px;padding-right:11px}.shell .catalog{padding:17px 13px}.shell .product-action{gap:10px}.shell .product-action b{font-size:18px}.shell .product-action button{min-width:79px;font-size:14px;padding:11px 10px}.shell .product-info strong{font-size:16px}.shell .product-info small{font-size:13px}.shell .bottom-nav button{font-size:12px}.shell .op-tabs{gap:17px}.shell .op-tabs>button{font-size:14px}.shell .owner-kpis strong,.shell .finance-metrics strong{font-size:23px}.shell .module-metrics{gap:11px}.shell .module-metrics span{font-size:12px}.shell .module-metrics strong{font-size:25px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* Compact POS cart: product removal is an icon action in the line header. */
+.shell .cart-line>div:first-child.cart-line-head{display:flex;flex-direction:row;align-items:flex-start;justify-content:space-between;gap:8px}
+.shell .cart-line-head .cart-product-meta{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.shell .cart-line-head .remove-line{flex:0 0 40px;width:40px;min-width:40px;height:40px;min-height:40px;margin:-7px -8px 0 4px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--im-muted);display:grid;place-items:center}
+.shell .cart-line-head .remove-line:hover{background:#f0f4f3;color:var(--im-ink)}
+.shell .cart-line-head .remove-line:focus-visible{outline:2px solid var(--im-teal);outline-offset:2px}
